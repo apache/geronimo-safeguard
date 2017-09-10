@@ -17,38 +17,25 @@
  *  under the License.
  */
 
-package org.apache.safeguard.retry.test;
+package org.apache.safeguard;
 
-import org.apache.safeguard.SafeguardCDITest;
 import org.apache.safeguard.impl.cdi.FailsafeExecutionManagerProvider;
 import org.apache.safeguard.impl.cdi.SafeguardExtension;
 import org.apache.safeguard.impl.cdi.SafeguardInterceptor;
-import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.arquillian.testng.Arquillian;
 import org.jboss.shrinkwrap.api.Archive;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.asset.EmptyAsset;
 import org.jboss.shrinkwrap.api.spec.JavaArchive;
-import org.testng.annotations.Test;
 
 import javax.enterprise.inject.spi.Extension;
-import javax.inject.Inject;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-public class CDIRetryTest extends SafeguardCDITest {
-    @Deployment
-    public static Archive<?> create() {
-        return SafeguardCDITest.create(CDIRetryBean.class);
-    }
-
-    @Inject
-    private CDIRetryBean cdiRetryBean;
-
-    @Test
-    public void shouldExecuteThreeTimesWithAnnotations() {
-        cdiRetryBean.doCall();
-
-        assertThat(cdiRetryBean.getCalls()).isEqualTo(3);
+public abstract class SafeguardCDITest extends Arquillian{
+    public static Archive<?> create(Class<?>...classes) {
+        return ShrinkWrap.create(JavaArchive.class)
+                .addClasses(FailsafeExecutionManagerProvider.class, SafeguardInterceptor.class)
+                .addClasses(classes)
+                .addAsManifestResource(EmptyAsset.INSTANCE, "beans.xml")
+                .addAsServiceProviderAndClasses(Extension.class, SafeguardExtension.class);
     }
 }

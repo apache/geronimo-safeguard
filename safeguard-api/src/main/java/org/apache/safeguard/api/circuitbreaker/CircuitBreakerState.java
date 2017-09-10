@@ -17,29 +17,10 @@
  *  under the License.
  */
 
-package org.apache.safeguard.impl.retry;
+package org.apache.safeguard.api.circuitbreaker;
 
-import org.apache.safeguard.api.retry.RetryManager;
-
-import javax.enterprise.inject.Vetoed;
-import java.util.HashMap;
-import java.util.Map;
-
-@Vetoed
-public class FailsafeRetryManager implements RetryManager {
-    private Map<String, FailsafeRetryDefinition> retries = new HashMap<>();
-
-    @Override
-    public FailsafeRetryBuilder newRetryDefinition(String name) {
-        return new FailsafeRetryBuilder(name, this);
-    }
-
-    @Override
-    public FailsafeRetryDefinition getRetryDefinition(String name) {
-        return retries.get(name);
-    }
-
-    void register(String name, FailsafeRetryDefinition failsafeRetryDefinition) {
-        this.retries.put(name, failsafeRetryDefinition);
-    }
+public enum CircuitBreakerState {
+    OPEN,
+    CLOSED,
+    HALF_OPEN
 }

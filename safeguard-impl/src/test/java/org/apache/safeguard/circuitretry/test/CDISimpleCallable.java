@@ -17,29 +17,27 @@
  *  under the License.
  */
 
-package org.apache.safeguard.impl.retry;
+package org.apache.safeguard.circuitretry.test;
 
-import org.apache.safeguard.api.retry.RetryManager;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Retry;
 
-import javax.enterprise.inject.Vetoed;
-import java.util.HashMap;
-import java.util.Map;
+import javax.enterprise.context.ApplicationScoped;
+import java.util.concurrent.Callable;
 
-@Vetoed
-public class FailsafeRetryManager implements RetryManager {
-    private Map<String, FailsafeRetryDefinition> retries = new HashMap<>();
-
-    @Override
-    public FailsafeRetryBuilder newRetryDefinition(String name) {
-        return new FailsafeRetryBuilder(name, this);
-    }
+@ApplicationScoped
+public class CDISimpleCallable implements Callable<Object> {
+    private int counter = 0;
 
     @Override
-    public FailsafeRetryDefinition getRetryDefinition(String name) {
-        return retries.get(name);
+    @Retry(maxRetries = 7, retryOn = RuntimeException.class)
+    @CircuitBreaker(successThreshold = 2, failureRatio = 0.75, requestVolumeThreshold = 4, delay = 50000)
+    public Object call() throws Exception {
+        counter++;
+        throw new RuntimeException("Invalid state");
     }
 
-    void register(String name, FailsafeRetryDefinition failsafeRetryDefinition) {
-        this.retries.put(name, failsafeRetryDefinition);
+    public int getCounter() {
+        return counter;
     }
 }

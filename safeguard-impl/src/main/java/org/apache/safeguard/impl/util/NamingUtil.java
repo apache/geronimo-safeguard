@@ -27,6 +27,6 @@ public final class NamingUtil {
     }
 
     public static String createName(Method method) {
-        return method.getDeclaringClass().getCanonicalName()+"."+method.getName()+"."+method.getParameters();
+        return method.getDeclaringClass().getCanonicalName()+"."+method.getName();
     }
 }

@@ -20,8 +20,9 @@
 package org.apache.safeguard.impl.cdi;
 
 import org.apache.safeguard.api.SafeguardEnabled;
-import org.apache.safeguard.impl.GuardedExecutions;
+import org.apache.safeguard.impl.FailsafeExecutionManager;
 import org.apache.safeguard.impl.util.AnnotationUtil;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Retry;
 
 import javax.annotation.Priority;
@@ -36,12 +37,12 @@ import java.lang.reflect.Method;
 @Priority(400)
 public class SafeguardInterceptor {
     @Inject
-    private GuardedExecutions guardedExecutions;
+    private FailsafeExecutionManager failsafeExecutionManager;
 
     @AroundInvoke
     public Object runSafeguards(InvocationContext invocationContext) throws Exception{
         if(isMethodSafeguarded(invocationContext.getMethod())) {
-            return guardedExecutions.execute(invocationContext);
+            return failsafeExecutionManager.execute(invocationContext);
         }
         else {
             return invocationContext.proceed();
@@ -49,6 +50,7 @@ public class SafeguardInterceptor {
     }
 
     private boolean isMethodSafeguarded(Method method) {
-        return AnnotationUtil.getAnnotation(method, Retry.class) != null;
+        return AnnotationUtil.getAnnotation(method, Retry.class) != null ||
+                AnnotationUtil.getAnnotation(method, CircuitBreaker.class) != null;
     }
 }

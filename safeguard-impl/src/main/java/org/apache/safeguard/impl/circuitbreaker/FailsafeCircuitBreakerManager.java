@@ -17,29 +17,30 @@
  *  under the License.
  */
 
-package org.apache.safeguard.impl.retry;
+package org.apache.safeguard.impl.circuitbreaker;
 
-import org.apache.safeguard.api.retry.RetryManager;
+import org.apache.safeguard.api.circuitbreaker.CircuitBreakerManager;
 
+import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.inject.Vetoed;
 import java.util.HashMap;
 import java.util.Map;
 
 @Vetoed
-public class FailsafeRetryManager implements RetryManager {
-    private Map<String, FailsafeRetryDefinition> retries = new HashMap<>();
+public class FailsafeCircuitBreakerManager implements CircuitBreakerManager{
+    private Map<String, FailsafeCircuitBreaker> circuitBreakers = new HashMap<>();;
 
     @Override
-    public FailsafeRetryBuilder newRetryDefinition(String name) {
-        return new FailsafeRetryBuilder(name, this);
+    public FailsafeCircuitBreakerBuilder newCircuitBreaker(String name) {
+        return new FailsafeCircuitBreakerBuilder(name, this);
     }
 
     @Override
-    public FailsafeRetryDefinition getRetryDefinition(String name) {
-        return retries.get(name);
+    public FailsafeCircuitBreaker getCircuitBreaker(String name) {
+        return circuitBreakers.get(name);
     }
 
-    void register(String name, FailsafeRetryDefinition failsafeRetryDefinition) {
-        this.retries.put(name, failsafeRetryDefinition);
+    void register(String name, FailsafeCircuitBreakerDefinition failsafeCircuitBreakerDefinition) {
+        this.circuitBreakers.put(name, new FailsafeCircuitBreaker(failsafeCircuitBreakerDefinition));
     }
 }

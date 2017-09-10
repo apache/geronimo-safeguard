@@ -17,17 +17,21 @@
  *  under the License.
  */
 
-package org.apache.safeguard.retry.test;
+package org.apache.safeguard.circuitbreaker.test;
 
+import org.apache.safeguard.api.circuitbreaker.CircuitBreakerState;
 import org.apache.safeguard.impl.FailsafeExecutionManager;
+import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
+import java.util.concurrent.Callable;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class RetryTest {
+public class CircuitTest {
     private FailsafeExecutionManager failsafeExecutionManager;
-    private static final String name = "GUARDED_RETRIES";
+    private static final String name = "MY_CIRCUIT_1";
 
     @BeforeTest
     public void setupForTest() {
@@ -35,15 +39,22 @@ public class RetryTest {
     }
 
     @Test
-    public void testRetryWithManualBuild() {
-        int expectedCalls = 3;
-        failsafeExecutionManager.getRetryManager().newRetryDefinition(name)
-                .withMaxRetries(expectedCalls)
+    public void shouldUseConfiguredCircuit() {
+        int failureCount = 5;
+        failsafeExecutionManager.getCircuitBreakerManager().newCircuitBreaker(name)
+                .withFailureCount(failureCount)
+                .withFailOn(Exception.class)
                 .build();
-        RetryBean retryBean = new RetryBean();
-
-        failsafeExecutionManager.execute(name, retryBean);
-
-        assertThat(retryBean.getCalls()).isEqualTo(expectedCalls);
+        FailsafeCircuitBreaker circuitBreaker = failsafeExecutionManager.getCircuitBreakerManager().getCircuitBreaker(name);
+        assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreakerState.CLOSED);
+        for(int i = 0; i<failureCount;i++) {
+            try {
+                failsafeExecutionManager.execute(name, () -> {
+                    throw new RuntimeException("Failing");
+                });
+            }
+            catch (Exception e) {}
+        }
+        assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreakerState.OPEN);
     }
 }

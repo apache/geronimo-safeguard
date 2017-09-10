@@ -17,29 +17,23 @@
  *  under the License.
  */
 
-package org.apache.safeguard.impl.retry;
+package org.apache.safeguard.api.circuitbreaker;
 
-import org.apache.safeguard.api.retry.RetryManager;
+import javax.enterprise.util.Nonbinding;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 
-import javax.enterprise.inject.Vetoed;
-import java.util.HashMap;
-import java.util.Map;
+public interface CircuitBreakerDefinition {
+    Collection<Class<? extends Throwable>> getFailOn();
 
-@Vetoed
-public class FailsafeRetryManager implements RetryManager {
-    private Map<String, FailsafeRetryDefinition> retries = new HashMap<>();
+    Duration getDelay();
 
-    @Override
-    public FailsafeRetryBuilder newRetryDefinition(String name) {
-        return new FailsafeRetryBuilder(name, this);
-    }
+    int getRequestVolumeThreshold();
 
-    @Override
-    public FailsafeRetryDefinition getRetryDefinition(String name) {
-        return retries.get(name);
-    }
+    double getFailureRatio();
 
-    void register(String name, FailsafeRetryDefinition failsafeRetryDefinition) {
-        this.retries.put(name, failsafeRetryDefinition);
-    }
+    int getSuccessThreshold();
+
+    double getSuccessRatio();
 }

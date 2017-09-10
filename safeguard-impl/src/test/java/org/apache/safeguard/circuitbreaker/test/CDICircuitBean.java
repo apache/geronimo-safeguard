@@ -17,29 +17,16 @@
  *  under the License.
  */
 
-package org.apache.safeguard.impl.retry;
+package org.apache.safeguard.circuitbreaker.test;
 
-import org.apache.safeguard.api.retry.RetryManager;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 
-import javax.enterprise.inject.Vetoed;
-import java.util.HashMap;
-import java.util.Map;
+import javax.enterprise.context.ApplicationScoped;
 
-@Vetoed
-public class FailsafeRetryManager implements RetryManager {
-    private Map<String, FailsafeRetryDefinition> retries = new HashMap<>();
-
-    @Override
-    public FailsafeRetryBuilder newRetryDefinition(String name) {
-        return new FailsafeRetryBuilder(name, this);
-    }
-
-    @Override
-    public FailsafeRetryDefinition getRetryDefinition(String name) {
-        return retries.get(name);
-    }
-
-    void register(String name, FailsafeRetryDefinition failsafeRetryDefinition) {
-        this.retries.put(name, failsafeRetryDefinition);
+@ApplicationScoped
+public class CDICircuitBean {
+    @CircuitBreaker(requestVolumeThreshold = 5)
+    public String sayHello() {
+        throw new RuntimeException("I'm failing");
     }
 }

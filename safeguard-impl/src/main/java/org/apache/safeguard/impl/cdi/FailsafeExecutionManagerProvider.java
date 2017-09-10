@@ -17,33 +17,17 @@
  *  under the License.
  */
 
-package org.apache.safeguard.retry.test;
+package org.apache.safeguard.impl.cdi;
 
 import org.apache.safeguard.impl.FailsafeExecutionManager;
-import org.testng.annotations.BeforeTest;
-import org.testng.annotations.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import javax.enterprise.context.ApplicationScoped;
+import javax.enterprise.inject.Produces;
 
-public class RetryTest {
-    private FailsafeExecutionManager failsafeExecutionManager;
-    private static final String name = "GUARDED_RETRIES";
+@ApplicationScoped
+public class FailsafeExecutionManagerProvider {
+    @Produces
+    @ApplicationScoped
+    private FailsafeExecutionManager failsafeExecutionManager = new FailsafeExecutionManager();
 
-    @BeforeTest
-    public void setupForTest() {
-        failsafeExecutionManager = new FailsafeExecutionManager();
-    }
-
-    @Test
-    public void testRetryWithManualBuild() {
-        int expectedCalls = 3;
-        failsafeExecutionManager.getRetryManager().newRetryDefinition(name)
-                .withMaxRetries(expectedCalls)
-                .build();
-        RetryBean retryBean = new RetryBean();
-
-        failsafeExecutionManager.execute(name, retryBean);
-
-        assertThat(retryBean.getCalls()).isEqualTo(expectedCalls);
-    }
 }
