@@ -17,33 +17,38 @@
  *  under the License.
  */
 
-package org.apache.safeguard.impl;
+package org.apache.safeguard.impl.executionPlans;
 
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.SyncFailsafe;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
 import org.apache.safeguard.impl.retry.FailsafeRetryDefinition;
 
-import java.time.Duration;
 import java.util.concurrent.Callable;
 
-class ExecutionPlan {
-    private final Duration timeout;
-    private final boolean isAsynchronous;
+public class SyncFailsafeExecutionPlan implements ExecutionPlan {
     private final FailsafeRetryDefinition retryDefinition;
     private final FailsafeCircuitBreaker failsafeCircuitBreaker;
 
-    public ExecutionPlan(Duration timeout, boolean isAsynchronous, FailsafeRetryDefinition retryDefinition, FailsafeCircuitBreaker failsafeCircuitBreaker) {
-        this.timeout = timeout;
-        this.isAsynchronous = isAsynchronous;
+    SyncFailsafeExecutionPlan(FailsafeRetryDefinition retryDefinition, FailsafeCircuitBreaker failsafeCircuitBreaker) {
         this.retryDefinition = retryDefinition;
         this.failsafeCircuitBreaker = failsafeCircuitBreaker;
-        if(retryDefinition == null && failsafeCircuitBreaker == null && !isAsynchronous) {
+        validateConfig();
+    }
+
+    private void validateConfig() {
+        if(retryDefinition == null && failsafeCircuitBreaker == null) {
             throw new IllegalStateException("For non-async invocations, must have at least one of RetryDefintion or CircuitBreaker defined");
         }
     }
 
+    @Override
     public <T> T execute(Callable<T> callable) {
+        SyncFailsafe<?> syncFailsafe = getSyncFailsafe();
+        return syncFailsafe.get(callable);
+    }
+
+    SyncFailsafe<?> getSyncFailsafe() {
         SyncFailsafe<?> syncFailsafe;
         if(retryDefinition == null) {
             syncFailsafe = Failsafe.with(failsafeCircuitBreaker.getDefinition().getCircuitBreaker());
@@ -56,6 +61,6 @@ class ExecutionPlan {
                 syncFailsafe = Failsafe.with(retryDefinition.getRetryPolicy()).with(failsafeCircuitBreaker.getDefinition().getCircuitBreaker());
             }
         }
-        return syncFailsafe.get(callable);
+        return syncFailsafe;
     }
 }

@@ -19,16 +19,19 @@
 
 package org.apache.safeguard.impl;
 
+import org.apache.safeguard.api.ExecutionManager;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerManager;
+import org.apache.safeguard.impl.executionPlans.ExecutionPlanFactory;
 import org.apache.safeguard.impl.retry.FailsafeRetryManager;
 
 import javax.enterprise.inject.Vetoed;
 import javax.interceptor.InvocationContext;
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.concurrent.Callable;
 
 @Vetoed
-public class FailsafeExecutionManager {
+public class FailsafeExecutionManager implements ExecutionManager {
     private FailsafeCircuitBreakerManager circuitBreakerManager;
     private FailsafeRetryManager retryManager;
     private ExecutionPlanFactory executionPlanFactory;
@@ -42,47 +45,33 @@ public class FailsafeExecutionManager {
     public Object execute(InvocationContext invocationContext) {
         Method method = invocationContext.getMethod();
         return executionPlanFactory.locateExecutionPlan(method).execute(invocationContext::proceed);
-//        String name = NamingUtil.createName(method);
-//        FailsafeRetryDefinition failsafeRetryDefinition = retryManager.getRetryDefinition(name);
-//        if (failsafeRetryDefinition == null) {
-//            failsafeRetryDefinition = createDefinition(name, method);
-//        }
-//        return Failsafe.with(failsafeRetryDefinition.getRetryPolicy()).get(invocationContext::proceed);
     }
 
+    @Override
     public <T> T execute(String name, Callable<T> callable) {
-        return executionPlanFactory.locateExecutionPlan(name).execute(callable);
-//        FailsafeRetryDefinition failsafeRetryDefinition = retryManager.getRetryDefinition(name);
-//        return Failsafe.with(failsafeRetryDefinition.getRetryPolicy()).get(callable);
+        return executionPlanFactory.locateExecutionPlan(name, null, false).execute(callable);
+    }
+
+    public <T> T executeAsync(String name, Callable<T> callable) {
+        return executionPlanFactory.locateExecutionPlan(name, null, true).execute(callable);
+    }
+
+    public <T> T executeAsync(String name, Callable<T> callable, Duration timeout) {
+        return executionPlanFactory.locateExecutionPlan(name, timeout, true).execute(callable);
     }
 
     public ExecutionPlanFactory getExecutionPlanFactory() {
         return executionPlanFactory;
     }
 
+    @Override
     public FailsafeCircuitBreakerManager getCircuitBreakerManager() {
         return circuitBreakerManager;
     }
 
+    @Override
     public FailsafeRetryManager getRetryManager() {
         return retryManager;
     }
 
-    //    private FailsafeRetryDefinition createDefinition(String name, Method method) {
-//        Retry retry = AnnotationUtil.getAnnotation(method, Retry.class);
-//        if(retry == null) {
-//            return null;
-//        }
-//        FailsafeRetryBuilder retryBuilder = retryManager.newRetryDefinition(name);
-//        return mapRetry(retry, retryBuilder);
-//    }
-
-//    private FailsafeCircuitBreakerDefinition createCBDefinition(String name, Method method) {
-//        CircuitBreaker circuitBreaker = AnnotationUtil.getAnnotation(method, CircuitBreaker.class);
-//        if (circuitBreaker == null) {
-//            return null;
-//        }
-//        FailsafeCircuitBreakerBuilder circuitBreakerBuilder = this.circuitBreakerManager.newCircuitBreaker(name);
-//        return mapCircuitBreaker(circuitBreaker, circuitBreakerBuilder);
-//    }
 }

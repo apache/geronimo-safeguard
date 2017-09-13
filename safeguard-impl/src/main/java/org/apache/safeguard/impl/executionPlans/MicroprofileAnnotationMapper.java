@@ -17,7 +17,7 @@
  *  under the License.
  */
 
-package org.apache.safeguard.impl;
+package org.apache.safeguard.impl.executionPlans;
 
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerBuilder;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerDefinition;

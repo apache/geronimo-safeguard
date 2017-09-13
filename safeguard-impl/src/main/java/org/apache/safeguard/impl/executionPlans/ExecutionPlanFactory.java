@@ -17,7 +17,7 @@
  *  under the License.
  */
 
-package org.apache.safeguard.impl;
+package org.apache.safeguard.impl.executionPlans;
 
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerBuilder;
@@ -27,15 +27,18 @@ import org.apache.safeguard.impl.retry.FailsafeRetryDefinition;
 import org.apache.safeguard.impl.retry.FailsafeRetryManager;
 import org.apache.safeguard.impl.util.AnnotationUtil;
 import org.apache.safeguard.impl.util.NamingUtil;
+import org.eclipse.microprofile.faulttolerance.Asynchronous;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.apache.safeguard.impl.MicroprofileAnnotationMapper.mapCircuitBreaker;
-import static org.apache.safeguard.impl.MicroprofileAnnotationMapper.mapRetry;
+import static org.apache.safeguard.impl.executionPlans.MicroprofileAnnotationMapper.mapCircuitBreaker;
+import static org.apache.safeguard.impl.executionPlans.MicroprofileAnnotationMapper.mapRetry;
 
 public class ExecutionPlanFactory {
     private final FailsafeCircuitBreakerManager circuitBreakerManager;
@@ -47,26 +50,46 @@ public class ExecutionPlanFactory {
         this.retryManager = retryManager;
     }
 
-    ExecutionPlan locateExecutionPlan(String name) {
-        return executionPlanMap.computeIfAbsent(name, name1 -> {
-            FailsafeCircuitBreaker circuitBreaker = circuitBreakerManager.getCircuitBreaker(name1);
-            FailsafeRetryDefinition retryDefinition = retryManager.getRetryDefinition(name1);
-            return new ExecutionPlan(null, false, retryDefinition, circuitBreaker);
+    public ExecutionPlan locateExecutionPlan(String name, Duration timeout, boolean async) {
+        return executionPlanMap.computeIfAbsent(name, key -> {
+            FailsafeCircuitBreaker circuitBreaker = circuitBreakerManager.getCircuitBreaker(key);
+            FailsafeRetryDefinition retryDefinition = retryManager.getRetryDefinition(key);
+            if (circuitBreaker == null && retryDefinition == null) {
+                return null;
+            } else {
+                return new SyncFailsafeExecutionPlan(retryDefinition, circuitBreaker);
+            }
         });
     }
 
-    ExecutionPlan locateExecutionPlan(Method method) {
+    public ExecutionPlan locateExecutionPlan(Method method) {
         final String name = NamingUtil.createName(method);
-        return executionPlanMap.computeIfAbsent(name, name1 -> {
-            FailsafeCircuitBreaker circuitBreaker = circuitBreakerManager.getCircuitBreaker(name1);
-            if(circuitBreaker == null) {
+        return executionPlanMap.computeIfAbsent(name, key -> {
+            FailsafeCircuitBreaker circuitBreaker = circuitBreakerManager.getCircuitBreaker(key);
+            if (circuitBreaker == null) {
                 circuitBreaker = createCBDefinition(name, method);
             }
-            FailsafeRetryDefinition retryDefinition = retryManager.getRetryDefinition(name1);
-            if(retryDefinition == null) {
-                retryDefinition =createDefinition(name, method);
+            FailsafeRetryDefinition retryDefinition = retryManager.getRetryDefinition(key);
+            if (retryDefinition == null) {
+                retryDefinition = createDefinition(name, method);
             }
-            return new ExecutionPlan(null, false, retryDefinition, circuitBreaker);
+            boolean isAsync = isAsync(method);
+            Duration timeout = readTimeout(method);
+            if(circuitBreaker == null && retryDefinition == null && isAsync) {
+                if(timeout == null) {
+                    return new AsyncOnlyExecutionPlan(null);
+                }
+                else {
+                    return new AsyncTimeoutExecutionPlan(timeout, null);
+                }
+            }
+            else {
+                if (isAsync) {
+                    return new AsyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, null, timeout);
+                } else {
+                    return new SyncFailsafeExecutionPlan(retryDefinition, circuitBreaker);
+                }
+            }
         });
     }
 
@@ -86,5 +109,17 @@ public class ExecutionPlanFactory {
         }
         FailsafeCircuitBreakerBuilder circuitBreakerBuilder = this.circuitBreakerManager.newCircuitBreaker(name);
         return new FailsafeCircuitBreaker(mapCircuitBreaker(circuitBreaker, circuitBreakerBuilder));
+    }
+
+    private boolean isAsync(Method method) {
+        return AnnotationUtil.getAnnotation(method, Asynchronous.class) != null;
+    }
+
+    private Duration readTimeout(Method method) {
+        Timeout timeout = AnnotationUtil.getAnnotation(method, Timeout.class);
+        if(timeout == null) {
+            return null;
+        }
+        return Duration.of(timeout.value(), timeout.unit());
     }
 }
