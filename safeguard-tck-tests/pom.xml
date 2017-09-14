@@ -30,5 +30,48 @@
 
     <artifactId>safeguard-tck-tests</artifactId>
 
-
+    <dependencies>
+        <dependency>
+            <groupId>org.eclipse.microprofile.fault-tolerance</groupId>
+            <artifactId>microprofile-fault-tolerance-tck</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.geronimo.safeguard</groupId>
+            <artifactId>safeguard-impl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.geronimo.specs</groupId>
+            <artifactId>geronimo-jcdi_2.0_spec</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.geronimo.specs</groupId>
+            <artifactId>geronimo-atinject_1.0_spec</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.geronimo.specs</groupId>
+            <artifactId>geronimo-annotation_1.3_spec</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.geronimo.specs</groupId>
+            <artifactId>geronimo-interceptor_1.2_spec</artifactId>
+        </dependency>
+    </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.20</version>
+                <configuration>
+                    <dependenciesToScan>
+                        <dependency>org.eclipse.microprofile.fault-tolerance:microprofile-fault-tolerance-tck</dependency>
+                    </dependenciesToScan>
+                    <includes>
+                        <include>org.eclipse.microprofile.fault.tolerance.tck.RetryTest</include>
+                        <include>org.eclipse.microprofile.fault.tolerance.tck.RetryConditionTest</include>
+                    </includes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

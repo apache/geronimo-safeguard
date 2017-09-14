@@ -17,4 +17,4 @@
 #  under the License.
 #
 
-org.apache.safeguard.impl.cdi.SafeguardExtension
+org.apache.safeguard.ft.tck.SafeguardTCKExtension

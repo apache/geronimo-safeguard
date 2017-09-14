@@ -26,6 +26,7 @@ import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Retry;
 
 import javax.annotation.Priority;
+import javax.enterprise.context.Dependent;
 import javax.inject.Inject;
 import javax.interceptor.AroundInvoke;
 import javax.interceptor.Interceptor;
@@ -35,6 +36,7 @@ import java.lang.reflect.Method;
 @Interceptor
 @SafeguardEnabled
 @Priority(400)
+@Dependent
 public class SafeguardInterceptor {
     @Inject
     private FailsafeExecutionManager failsafeExecutionManager;
