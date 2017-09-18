@@ -36,6 +36,7 @@ import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executors;
 
 import static org.apache.safeguard.impl.executionPlans.MicroprofileAnnotationMapper.mapCircuitBreaker;
 import static org.apache.safeguard.impl.executionPlans.MicroprofileAnnotationMapper.mapRetry;
@@ -80,12 +81,16 @@ public class ExecutionPlanFactory {
                     return new AsyncOnlyExecutionPlan(null);
                 }
                 else {
-                    return new AsyncTimeoutExecutionPlan(timeout, null);
+                    return new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5));
                 }
             }
+            else if(circuitBreaker == null && retryDefinition == null && timeout != null) {
+                // then its just timeout
+                return new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5));
+            }
             else {
-                if (isAsync) {
-                    return new AsyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, null, timeout);
+                if (isAsync || timeout != null) {
+                    return new AsyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, Executors.newScheduledThreadPool(5), timeout);
                 } else {
                     return new SyncFailsafeExecutionPlan(retryDefinition, circuitBreaker);
                 }

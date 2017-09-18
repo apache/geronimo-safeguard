@@ -19,6 +19,7 @@
 
 package org.apache.safeguard.impl.executionPlans;
 
+import net.jodah.failsafe.CircuitBreakerOpenException;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.SyncFailsafe;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
@@ -45,7 +46,11 @@ public class SyncFailsafeExecutionPlan implements ExecutionPlan {
     @Override
     public <T> T execute(Callable<T> callable) {
         SyncFailsafe<?> syncFailsafe = getSyncFailsafe();
-        return syncFailsafe.get(callable);
+        try {
+            return syncFailsafe.get(callable);
+        } catch (CircuitBreakerOpenException e) {
+            throw new org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException(e);
+        }
     }
 
     SyncFailsafe<?> getSyncFailsafe() {
@@ -58,7 +63,8 @@ public class SyncFailsafeExecutionPlan implements ExecutionPlan {
                 syncFailsafe = Failsafe.with(retryDefinition.getRetryPolicy());
             }
             else {
-                syncFailsafe = Failsafe.with(retryDefinition.getRetryPolicy()).with(failsafeCircuitBreaker.getDefinition().getCircuitBreaker());
+                syncFailsafe = Failsafe.with(retryDefinition.getRetryPolicy())
+                        .with(failsafeCircuitBreaker.getDefinition().getCircuitBreaker());
             }
         }
         return syncFailsafe;

@@ -53,7 +53,7 @@
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <microprofile-fault-tolerance.version>1.0-SNAPSHOT</microprofile-fault-tolerance.version>
+        <microprofile-fault-tolerance.version>1.0</microprofile-fault-tolerance.version>
         <owb.version>2.0.1</owb.version>
         <arquillian.version>1.1.13.Final</arquillian.version>
         <arquillian-weld-embedded.version>2.0.0.Beta5</arquillian-weld-embedded.version>
@@ -166,23 +166,6 @@
     </dependencyManagement>
 
     <profiles>
-        <profile>
-            <id>eclipse-repo</id>
-            <repositories>
-                <repository>
-                    <id>microprofile-snapshots</id>
-                    <releases><enabled>false</enabled></releases>
-                    <snapshots><enabled>true</enabled></snapshots>
-                    <url>https://repo.eclipse.org/content/groups/microprofile/</url>
-                </repository>
-                <repository>
-                    <id>microprofile-releases</id>
-                    <releases><enabled>true</enabled></releases>
-                    <snapshots><enabled>false</enabled></snapshots>
-                    <url>https://repo.eclipse.org/content/repositories/microprofile-releases</url>
-                </repository>
-            </repositories>
-        </profile>
         <profile>
             <id>OWB2</id>
             <activation>

@@ -20,6 +20,7 @@
 package org.apache.safeguard.impl.executionPlans;
 
 import net.jodah.failsafe.AsyncFailsafe;
+import net.jodah.failsafe.CircuitBreakerOpenException;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
 import org.apache.safeguard.impl.retry.FailsafeRetryDefinition;
 
@@ -50,10 +51,26 @@ public class AsyncFailsafeExecutionPlan extends SyncFailsafeExecutionPlan {
             if (this.timeout == null) {
                 return asyncFailsafe.get(callable).get();
             } else {
-                return asyncFailsafe.get(callable).get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                return asyncFailsafe
+                        .get(new TimeoutWrappedCallable<>(callable, executorService, timeout))
+                        .get();
             }
-        } catch (TimeoutException | InterruptedException | ExecutionException e) {
-            throw new org.eclipse.microprofile.faulttolerance.exceptions.TimeoutException(e);
+        } catch (CircuitBreakerOpenException e) {
+            throw new org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException(e);
+        } catch (InterruptedException | ExecutionException e) {
+            Throwable cause = e.getCause();
+            if(cause == null) {
+                throw new RuntimeException(e);
+            }
+            if (cause instanceof CircuitBreakerOpenException) {
+                throw new org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException(cause);
+            }
+            else if(cause instanceof RuntimeException) {
+                throw (RuntimeException) cause;
+            }
+            else {
+                throw new RuntimeException(e);
+            }
         }
     }
 }

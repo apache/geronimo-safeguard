@@ -24,6 +24,7 @@ import org.apache.safeguard.impl.FailsafeExecutionManager;
 import org.apache.safeguard.impl.util.AnnotationUtil;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 
 import javax.annotation.Priority;
 import javax.enterprise.context.Dependent;
@@ -53,6 +54,7 @@ public class SafeguardInterceptor {
 
     private boolean isMethodSafeguarded(Method method) {
         return AnnotationUtil.getAnnotation(method, Retry.class) != null ||
-                AnnotationUtil.getAnnotation(method, CircuitBreaker.class) != null;
+                AnnotationUtil.getAnnotation(method, CircuitBreaker.class) != null ||
+                AnnotationUtil.getAnnotation(method, Timeout.class) != null;
     }
 }

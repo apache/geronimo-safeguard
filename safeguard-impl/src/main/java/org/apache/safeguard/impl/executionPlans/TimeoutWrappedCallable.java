@@ -21,34 +21,27 @@ package org.apache.safeguard.impl.executionPlans;
 
 import java.time.Duration;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-class AsyncTimeoutExecutionPlan implements ExecutionPlan {
-    private final Duration timeout;
+class TimeoutWrappedCallable<T> implements Callable<T> {
+    private final Callable<T> delegate;
     private final ExecutorService executorService;
+    private final Duration timeout;
 
-    AsyncTimeoutExecutionPlan(Duration timeout, ExecutorService executorService) {
-        this.timeout = timeout;
+    TimeoutWrappedCallable(Callable<T> delegate, ExecutorService executorService, Duration timeout) {
+        this.delegate = delegate;
         this.executorService = executorService;
+        this.timeout = timeout;
     }
 
     @Override
-    public <T> T execute(Callable<T> callable) {
-        Future<T> future = executorService.submit(callable);
+    public T call() throws Exception {
         try {
-            return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (ExecutionException e) {
-            if(e.getCause() != null && e.getCause() instanceof RuntimeException) {
-                throw (RuntimeException)e.getCause();
-            }
-            else {
-                throw new RuntimeException(e);
-            }
-        } catch (InterruptedException | TimeoutException e) {
+            return executorService.submit(delegate).get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        }
+        catch (TimeoutException e) {
             throw new org.eclipse.microprofile.faulttolerance.exceptions.TimeoutException(e);
         }
     }

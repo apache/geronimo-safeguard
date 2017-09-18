@@ -67,8 +67,14 @@
                         <dependency>org.eclipse.microprofile.fault-tolerance:microprofile-fault-tolerance-tck</dependency>
                     </dependenciesToScan>
                     <includes>
-                        <include>org.eclipse.microprofile.fault.tolerance.tck.RetryTest</include>
+                        <include>org.eclipse.microprofile.fault.tolerance.tck.CircuitBreakerTest</include>
+                        <!--<include>org.eclipse.microprofile.fault.tolerance.tck.CircuitBreakerRetryTest</include>-->
+                        <!--<include>org.eclipse.microprofile.fault.tolerance.tck.ConfigTest</include>-->
+                        <!--<include>org.eclipse.microprofile.fault.tolerance.tck.FallbackTest</include>-->
                         <include>org.eclipse.microprofile.fault.tolerance.tck.RetryConditionTest</include>
+                        <include>org.eclipse.microprofile.fault.tolerance.tck.RetryTest</include>
+                        <include>org.eclipse.microprofile.fault.tolerance.tck.RetryTimeoutTest</include>
+                        <include>org.eclipse.microprofile.fault.tolerance.tck.TimeoutTest</include>
                     </includes>
                 </configuration>
             </plugin>
