@@ -21,6 +21,7 @@ package org.apache.safeguard.impl.executionPlans;
 
 import org.apache.safeguard.exception.AsyncException;
 
+import javax.interceptor.InvocationContext;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -34,7 +35,7 @@ class AsyncOnlyExecutionPlan implements ExecutionPlan {
     }
 
     @Override
-    public <T> T execute(Callable<T> callable) {
+    public <T> T execute(Callable<T> callable, InvocationContext invocationContext) {
         Future<T> submitted = executorService.submit(callable);
         try {
             return submitted.get();

@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 public class SyncFailsafeExecutionPlanTest {
     @Test
     public void shouldThrowExceptionWithInvalidConfig() {
-        assertThatThrownBy(() -> new SyncFailsafeExecutionPlan(null, null))
+        assertThatThrownBy(() -> new SyncFailsafeExecutionPlan(null, null, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("For non-async invocations, must have at least one of RetryDefintion or CircuitBreaker defined");
     }

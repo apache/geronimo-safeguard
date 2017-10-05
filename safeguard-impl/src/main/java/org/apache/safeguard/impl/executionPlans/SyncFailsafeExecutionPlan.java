@@ -23,17 +23,22 @@ import net.jodah.failsafe.CircuitBreakerOpenException;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.SyncFailsafe;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
+import org.apache.safeguard.impl.fallback.FallbackRunner;
 import org.apache.safeguard.impl.retry.FailsafeRetryDefinition;
 
+import javax.interceptor.InvocationContext;
 import java.util.concurrent.Callable;
+import java.util.function.Function;
 
 public class SyncFailsafeExecutionPlan implements ExecutionPlan {
     private final FailsafeRetryDefinition retryDefinition;
     private final FailsafeCircuitBreaker failsafeCircuitBreaker;
+    private final FallbackRunner fallback;
 
-    SyncFailsafeExecutionPlan(FailsafeRetryDefinition retryDefinition, FailsafeCircuitBreaker failsafeCircuitBreaker) {
+    SyncFailsafeExecutionPlan(FailsafeRetryDefinition retryDefinition, FailsafeCircuitBreaker failsafeCircuitBreaker, FallbackRunner fallback) {
         this.retryDefinition = retryDefinition;
         this.failsafeCircuitBreaker = failsafeCircuitBreaker;
+        this.fallback = fallback;
         validateConfig();
     }
 
@@ -44,8 +49,8 @@ public class SyncFailsafeExecutionPlan implements ExecutionPlan {
     }
 
     @Override
-    public <T> T execute(Callable<T> callable) {
-        SyncFailsafe<?> syncFailsafe = getSyncFailsafe();
+    public <T> T execute(Callable<T> callable, InvocationContext invocationContext) {
+        SyncFailsafe<?> syncFailsafe = getSyncFailsafe(invocationContext);
         try {
             return syncFailsafe.get(callable);
         } catch (CircuitBreakerOpenException e) {
@@ -53,8 +58,9 @@ public class SyncFailsafeExecutionPlan implements ExecutionPlan {
         }
     }
 
-    SyncFailsafe<?> getSyncFailsafe() {
+    SyncFailsafe<?> getSyncFailsafe(InvocationContext invocationContext) {
         SyncFailsafe<?> syncFailsafe;
+        Callable callable = () -> fallback.executeFallback(invocationContext);
         if(retryDefinition == null) {
             syncFailsafe = Failsafe.with(failsafeCircuitBreaker.getDefinition().getCircuitBreaker());
         }
@@ -66,6 +72,9 @@ public class SyncFailsafeExecutionPlan implements ExecutionPlan {
                 syncFailsafe = Failsafe.with(retryDefinition.getRetryPolicy())
                         .with(failsafeCircuitBreaker.getDefinition().getCircuitBreaker());
             }
+        }
+        if(this.fallback != null) {
+            syncFailsafe = syncFailsafe.withFallback(callable);
         }
         return syncFailsafe;
     }

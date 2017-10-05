@@ -35,7 +35,7 @@ public class AsyncTimeoutExecutionPlanTest {
         AsyncTimeoutExecutionPlan asyncTimeoutExecutionPlan = new AsyncTimeoutExecutionPlan(Duration.ofMillis(1000), Executors.newSingleThreadExecutor());
         DelayedCaller callable = new DelayedCaller(200);
 
-        asyncTimeoutExecutionPlan.execute(callable);
+        asyncTimeoutExecutionPlan.execute(callable, null);
 
         String myThreadName = Thread.currentThread().getName();
         assertThat(callable.executedThread).isNotEqualTo(myThreadName);
@@ -46,7 +46,7 @@ public class AsyncTimeoutExecutionPlanTest {
         AsyncTimeoutExecutionPlan asyncTimeoutExecutionPlan = new AsyncTimeoutExecutionPlan(Duration.ofMillis(100), Executors.newSingleThreadExecutor());
         DelayedCaller callable = new DelayedCaller(200);
 
-        assertThatThrownBy(() -> asyncTimeoutExecutionPlan.execute(callable)).isInstanceOf(TimeoutException.class);
+        assertThatThrownBy(() -> asyncTimeoutExecutionPlan.execute(callable, null)).isInstanceOf(TimeoutException.class);
     }
 
     private static class DelayedCaller implements Callable<Object> {

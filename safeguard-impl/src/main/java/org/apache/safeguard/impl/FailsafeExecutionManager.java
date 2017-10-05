@@ -44,20 +44,20 @@ public class FailsafeExecutionManager implements ExecutionManager {
 
     public Object execute(InvocationContext invocationContext) {
         Method method = invocationContext.getMethod();
-        return executionPlanFactory.locateExecutionPlan(method).execute(invocationContext::proceed);
+        return executionPlanFactory.locateExecutionPlan(method).execute(invocationContext::proceed, invocationContext);
     }
 
     @Override
     public <T> T execute(String name, Callable<T> callable) {
-        return executionPlanFactory.locateExecutionPlan(name, null, false).execute(callable);
+        return executionPlanFactory.locateExecutionPlan(name, null, false).execute(callable, null);
     }
 
     public <T> T executeAsync(String name, Callable<T> callable) {
-        return executionPlanFactory.locateExecutionPlan(name, null, true).execute(callable);
+        return executionPlanFactory.locateExecutionPlan(name, null, true).execute(callable, null);
     }
 
     public <T> T executeAsync(String name, Callable<T> callable, Duration timeout) {
-        return executionPlanFactory.locateExecutionPlan(name, timeout, true).execute(callable);
+        return executionPlanFactory.locateExecutionPlan(name, timeout, true).execute(callable, null);
     }
 
     public ExecutionPlanFactory getExecutionPlanFactory() {

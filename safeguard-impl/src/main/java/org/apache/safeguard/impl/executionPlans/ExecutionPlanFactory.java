@@ -22,6 +22,7 @@ package org.apache.safeguard.impl.executionPlans;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerBuilder;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerManager;
+import org.apache.safeguard.impl.fallback.FallbackRunner;
 import org.apache.safeguard.impl.retry.FailsafeRetryBuilder;
 import org.apache.safeguard.impl.retry.FailsafeRetryDefinition;
 import org.apache.safeguard.impl.retry.FailsafeRetryManager;
@@ -29,6 +30,7 @@ import org.apache.safeguard.impl.util.AnnotationUtil;
 import org.apache.safeguard.impl.util.NamingUtil;
 import org.eclipse.microprofile.faulttolerance.Asynchronous;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Fallback;
 import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.faulttolerance.Timeout;
 
@@ -36,6 +38,7 @@ import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 
 import static org.apache.safeguard.impl.executionPlans.MicroprofileAnnotationMapper.mapCircuitBreaker;
@@ -58,7 +61,7 @@ public class ExecutionPlanFactory {
             if (circuitBreaker == null && retryDefinition == null) {
                 return null;
             } else {
-                return new SyncFailsafeExecutionPlan(retryDefinition, circuitBreaker);
+                return new SyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, null);
             }
         });
     }
@@ -76,6 +79,7 @@ public class ExecutionPlanFactory {
             }
             boolean isAsync = isAsync(method);
             Duration timeout = readTimeout(method);
+            FallbackRunner fallbackRunner = this.createFallback(method);
             if(circuitBreaker == null && retryDefinition == null && isAsync) {
                 if(timeout == null) {
                     return new AsyncOnlyExecutionPlan(null);
@@ -90,9 +94,9 @@ public class ExecutionPlanFactory {
             }
             else {
                 if (isAsync || timeout != null) {
-                    return new AsyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, Executors.newScheduledThreadPool(5), timeout);
+                    return new AsyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner, Executors.newScheduledThreadPool(5), timeout);
                 } else {
-                    return new SyncFailsafeExecutionPlan(retryDefinition, circuitBreaker);
+                    return new SyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner);
                 }
             }
         });
@@ -114,6 +118,15 @@ public class ExecutionPlanFactory {
         }
         FailsafeCircuitBreakerBuilder circuitBreakerBuilder = this.circuitBreakerManager.newCircuitBreaker(name);
         return new FailsafeCircuitBreaker(mapCircuitBreaker(circuitBreaker, circuitBreakerBuilder));
+    }
+
+    private FallbackRunner createFallback(Method method) {
+        Fallback fallback = AnnotationUtil.getAnnotation(method, Fallback.class);
+        if(fallback == null) {
+            return null;
+        }
+        String methodName = "".equals(fallback.fallbackMethod()) ? null : fallback.fallbackMethod();
+        return new FallbackRunner(fallback.value(), methodName);
     }
 
     private boolean isAsync(Method method) {

@@ -19,8 +19,9 @@
 
 package org.apache.safeguard.impl.executionPlans;
 
+import javax.interceptor.InvocationContext;
 import java.util.concurrent.Callable;
 
 public interface ExecutionPlan {
-    <T> T execute(Callable<T> callable);
+    <T> T execute(Callable<T> function, InvocationContext invocationContext);
 }

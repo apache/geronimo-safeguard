@@ -32,7 +32,7 @@ public class AsyncOnlyExecutionPlanTest {
     public void shouldExecuteAsncWithoutTimeout() {
         AsyncOnlyExecutionPlan asyncOnlyExecutionPlan = new AsyncOnlyExecutionPlan(Executors.newFixedThreadPool(2));
         MyCallable callable = new MyCallable();
-        asyncOnlyExecutionPlan.execute(callable);
+        asyncOnlyExecutionPlan.execute(callable, null);
         assertThat(callable.calledThread).isNotEqualTo(Thread.currentThread().getName());
     }
 

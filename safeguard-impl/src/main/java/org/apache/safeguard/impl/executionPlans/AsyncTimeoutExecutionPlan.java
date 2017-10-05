@@ -19,6 +19,7 @@
 
 package org.apache.safeguard.impl.executionPlans;
 
+import javax.interceptor.InvocationContext;
 import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -37,7 +38,7 @@ class AsyncTimeoutExecutionPlan implements ExecutionPlan {
     }
 
     @Override
-    public <T> T execute(Callable<T> callable) {
+    public <T> T execute(Callable<T> callable, InvocationContext invocationContext) {
         Future<T> future = executorService.submit(callable);
         try {
             return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
