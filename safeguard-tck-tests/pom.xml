@@ -67,7 +67,6 @@
                         <dependency>org.eclipse.microprofile.fault-tolerance:microprofile-fault-tolerance-tck</dependency>
                     </dependenciesToScan>
                     <excludes>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.CircuitBreakerRetryTest</exclude>
                         <exclude>org.eclipse.microprofile.fault.tolerance.tck.ConfigTest</exclude>
                         <exclude>org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadAsynchRetryTest</exclude>
                         <exclude>org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadAsynchTest</exclude>

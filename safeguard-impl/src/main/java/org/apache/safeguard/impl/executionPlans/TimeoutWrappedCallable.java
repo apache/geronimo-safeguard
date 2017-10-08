@@ -19,30 +19,70 @@
 
 package org.apache.safeguard.impl.executionPlans;
 
+import org.apache.safeguard.api.circuitbreaker.CircuitBreakerState;
+import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
+import org.eclipse.microprofile.faulttolerance.exceptions.TimeoutException;
+
 import java.time.Duration;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 class TimeoutWrappedCallable<T> implements Callable<T> {
     private final Callable<T> delegate;
-    private final ExecutorService executorService;
+    private final ScheduledExecutorService executorService;
     private final Duration timeout;
+    private final FailsafeCircuitBreaker failsafeCircuitBreaker;
+    private boolean timedout = false;
 
-    TimeoutWrappedCallable(Callable<T> delegate, ExecutorService executorService, Duration timeout) {
+    TimeoutWrappedCallable(Callable<T> delegate, ScheduledExecutorService executorService, Duration timeout, FailsafeCircuitBreaker failsafeCircuitBreaker) {
         this.delegate = delegate;
         this.executorService = executorService;
         this.timeout = timeout;
+        this.failsafeCircuitBreaker = failsafeCircuitBreaker;
     }
 
     @Override
     public T call() throws Exception {
-        try {
-            return executorService.submit(delegate).get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        boolean circuitBreakerOpen = failsafeCircuitBreaker != null && failsafeCircuitBreaker.getState() == CircuitBreakerState.OPEN;
+        if(circuitBreakerOpen) {
+            throw new CircuitBreakerOpenException();
         }
-        catch (TimeoutException e) {
-            throw new org.eclipse.microprofile.faulttolerance.exceptions.TimeoutException(e);
+        ScheduledFuture<?> scheduledFuture = executorService.schedule(new TimerRunnable(Thread.currentThread(), this),
+                timeout.toMillis(), TimeUnit.MILLISECONDS);
+
+        T result;
+        try {
+            result = delegate.call();
+        } catch (Exception e) {
+            throw e;
+        } finally {
+            scheduledFuture.cancel(true);
+        }
+        if(timedout) {
+            throw new TimeoutException("Execution timed out after " + timeout);
+        }
+        return result;
+    }
+
+    private class TimerRunnable implements Runnable {
+        private final Thread targetThread;
+        private final TimeoutWrappedCallable task;
+
+        private boolean doInterrupt = true;
+        private TimerRunnable(Thread targetThread, TimeoutWrappedCallable task) {
+            this.targetThread = targetThread;
+            this.task = task;
+        }
+
+        @Override
+        public void run() {
+            if(doInterrupt) {
+                task.timedout = true;
+                targetThread.interrupt();
+            }
         }
     }
 }

@@ -28,11 +28,10 @@ import org.apache.safeguard.impl.retry.FailsafeRetryDefinition;
 
 import javax.interceptor.InvocationContext;
 import java.util.concurrent.Callable;
-import java.util.function.Function;
 
 public class SyncFailsafeExecutionPlan implements ExecutionPlan {
-    private final FailsafeRetryDefinition retryDefinition;
-    private final FailsafeCircuitBreaker failsafeCircuitBreaker;
+    protected final FailsafeRetryDefinition retryDefinition;
+    protected final FailsafeCircuitBreaker failsafeCircuitBreaker;
     private final FallbackRunner fallback;
 
     SyncFailsafeExecutionPlan(FailsafeRetryDefinition retryDefinition, FailsafeCircuitBreaker failsafeCircuitBreaker, FallbackRunner fallback) {

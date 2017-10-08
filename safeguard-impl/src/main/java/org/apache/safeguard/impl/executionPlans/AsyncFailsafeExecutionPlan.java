@@ -53,7 +53,8 @@ public class AsyncFailsafeExecutionPlan extends SyncFailsafeExecutionPlan {
                 return asyncFailsafe.get(callable).get();
             } else {
                 return asyncFailsafe
-                        .get(new TimeoutWrappedCallable<>(callable, executorService, timeout))
+                        .get(new TimeoutWrappedCallable<>(callable, executorService, timeout,
+                                super.failsafeCircuitBreaker))
                         .get();
             }
         } catch (CircuitBreakerOpenException e) {

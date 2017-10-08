@@ -33,7 +33,7 @@ class MicroprofileAnnotationMapper {
     static FailsafeRetryDefinition mapRetry(Retry retry, FailsafeRetryBuilder retryBuilder) {
         retryBuilder.withMaxRetries(retry.maxRetries())
                 .withRetryOn(retry.retryOn())
-                .withRetryOn(TimeoutException.class)
+                .withRetryOn(TimeoutException.class, org.eclipse.microprofile.faulttolerance.exceptions.TimeoutException.class)
                 .withAbortOn(retry.abortOn());
         if (retry.delay() > 0L) {
             retryBuilder.withDelay(Duration.of(retry.delay(), retry.delayUnit()));
@@ -52,7 +52,7 @@ class MicroprofileAnnotationMapper {
         int failureCount = (int) (circuitBreaker.failureRatio() * circuitBreaker.requestVolumeThreshold());
         FailsafeCircuitBreakerBuilder failsafeCircuitBreakerBuilder = builder
                 .withFailOn(circuitBreaker.failOn())
-                .withFailOn(TimeoutException.class)
+                .withFailOn(TimeoutException.class, org.eclipse.microprofile.faulttolerance.exceptions.TimeoutException.class)
                 .withDelay(Duration.of(circuitBreaker.delay(), circuitBreaker.delayUnit()))
                 .withSuccessCount(circuitBreaker.successThreshold());
         if (failureCount > 0) {
