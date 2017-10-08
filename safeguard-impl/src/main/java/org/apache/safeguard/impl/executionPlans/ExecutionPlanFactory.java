@@ -50,7 +50,7 @@ public class ExecutionPlanFactory {
     private final FailsafeCircuitBreakerManager circuitBreakerManager;
     private final FailsafeRetryManager retryManager;
     private Map<String, ExecutionPlan> executionPlanMap = new HashMap<>();
-    private boolean enableAllMicroProfileFeatures = false;
+    private final boolean enableAllMicroProfileFeatures;
 
     public ExecutionPlanFactory(FailsafeCircuitBreakerManager circuitBreakerManager, FailsafeRetryManager retryManager) {
         this.circuitBreakerManager = circuitBreakerManager;
