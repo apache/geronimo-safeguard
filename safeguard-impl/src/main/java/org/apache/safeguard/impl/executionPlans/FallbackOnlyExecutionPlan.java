@@ -19,9 +19,25 @@
 
 package org.apache.safeguard.impl.executionPlans;
 
+import org.apache.safeguard.impl.fallback.FallbackRunner;
+
 import javax.interceptor.InvocationContext;
 import java.util.concurrent.Callable;
 
-public interface ExecutionPlan {
-    <T> T execute(Callable<T> callable, InvocationContext invocationContext);
+public class FallbackOnlyExecutionPlan implements ExecutionPlan {
+    private final FallbackRunner fallbackRunner;
+
+    public FallbackOnlyExecutionPlan(FallbackRunner fallbackRunner) {
+        this.fallbackRunner = fallbackRunner;
+    }
+
+    @Override
+    public <T> T execute(Callable<T> callable, InvocationContext invocationContext) {
+        try {
+            return callable.call();
+        }
+        catch (Exception e) {
+            return (T)fallbackRunner.executeFallback(invocationContext);
+        }
+    }
 }

@@ -28,6 +28,8 @@ import org.apache.safeguard.impl.retry.FailsafeRetryDefinition;
 import org.apache.safeguard.impl.retry.FailsafeRetryManager;
 import org.apache.safeguard.impl.util.AnnotationUtil;
 import org.apache.safeguard.impl.util.NamingUtil;
+import org.eclipse.microprofile.config.Config;
+import org.eclipse.microprofile.config.ConfigProvider;
 import org.eclipse.microprofile.faulttolerance.Asynchronous;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Fallback;
@@ -38,8 +40,8 @@ import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.safeguard.impl.executionPlans.MicroprofileAnnotationMapper.mapCircuitBreaker;
 import static org.apache.safeguard.impl.executionPlans.MicroprofileAnnotationMapper.mapRetry;
@@ -48,10 +50,12 @@ public class ExecutionPlanFactory {
     private final FailsafeCircuitBreakerManager circuitBreakerManager;
     private final FailsafeRetryManager retryManager;
     private Map<String, ExecutionPlan> executionPlanMap = new HashMap<>();
+    private boolean enableAllMicroProfileFeatures = false;
 
     public ExecutionPlanFactory(FailsafeCircuitBreakerManager circuitBreakerManager, FailsafeRetryManager retryManager) {
         this.circuitBreakerManager = circuitBreakerManager;
         this.retryManager = retryManager;
+        this.enableAllMicroProfileFeatures = this.enableNonFallbacksForMicroProfile();
     }
 
     public ExecutionPlan locateExecutionPlan(String name, Duration timeout, boolean async) {
@@ -80,26 +84,45 @@ public class ExecutionPlanFactory {
             boolean isAsync = isAsync(method);
             Duration timeout = readTimeout(method);
             FallbackRunner fallbackRunner = this.createFallback(method);
-            if(circuitBreaker == null && retryDefinition == null && isAsync) {
-                if(timeout == null) {
-                    return new AsyncOnlyExecutionPlan(null);
+            if(this.enableAllMicroProfileFeatures) {
+                if (circuitBreaker == null && retryDefinition == null && isAsync) {
+                    if (timeout == null) {
+                        return new AsyncOnlyExecutionPlan(null);
+                    } else {
+                        return new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5));
+                    }
+                } else if (circuitBreaker == null && retryDefinition == null && timeout != null) {
+                    // then its just timeout
+                    return new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5));
+                } else {
+                    if (isAsync || timeout != null) {
+                        return new AsyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner, Executors.newScheduledThreadPool(5), timeout);
+                    } else {
+                        return new SyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner);
+                    }
+                }
+            }else {
+                if(fallbackRunner == null) {
+                    return new BasicExecutionPlan();
                 }
                 else {
-                    return new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5));
-                }
-            }
-            else if(circuitBreaker == null && retryDefinition == null && timeout != null) {
-                // then its just timeout
-                return new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5));
-            }
-            else {
-                if (isAsync || timeout != null) {
-                    return new AsyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner, Executors.newScheduledThreadPool(5), timeout);
-                } else {
-                    return new SyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner);
+                    return new FallbackOnlyExecutionPlan(fallbackRunner);
                 }
             }
         });
+    }
+
+    private boolean enableNonFallbacksForMicroProfile() {
+        try {
+            Class.forName("org.eclipse.microprofile.config.Config");
+            Config config = ConfigProvider.getConfig();
+            AtomicBoolean disableExecutions = new AtomicBoolean(true);
+            config.getOptionalValue("MP_Fault_Tolerance_NonFallback_Enabled", Boolean.class)
+                    .ifPresent(disableExecutions::set);
+            return disableExecutions.get();
+        } catch (ClassNotFoundException e) {
+            return true;
+        }
     }
 
     private FailsafeRetryDefinition createDefinition(String name, Method method) {

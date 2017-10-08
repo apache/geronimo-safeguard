@@ -22,6 +22,14 @@ package org.apache.safeguard.impl.executionPlans;
 import javax.interceptor.InvocationContext;
 import java.util.concurrent.Callable;
 
-public interface ExecutionPlan {
-    <T> T execute(Callable<T> callable, InvocationContext invocationContext);
+public class BasicExecutionPlan implements ExecutionPlan {
+    @Override
+    public <T> T execute(Callable<T> callable, InvocationContext invocationContext) {
+        try {
+            return callable.call();
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
 }
