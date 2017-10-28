@@ -19,7 +19,7 @@
 
 package org.apache.safeguard.exception;
 
-public class AsyncException extends RuntimeException {
+public class AsyncException extends SafeguardException {
     public AsyncException(Exception e) {
         super(e);
     }

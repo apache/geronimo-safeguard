@@ -20,6 +20,8 @@
 package org.apache.safeguard.impl;
 
 import org.apache.safeguard.api.ExecutionManager;
+import org.apache.safeguard.api.bulkhead.BulkheadManager;
+import org.apache.safeguard.impl.bulkhead.BulkheadManagerImpl;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerManager;
 import org.apache.safeguard.impl.executionPlans.ExecutionPlanFactory;
 import org.apache.safeguard.impl.retry.FailsafeRetryManager;
@@ -32,6 +34,7 @@ import java.util.concurrent.Callable;
 
 @Vetoed
 public class FailsafeExecutionManager implements ExecutionManager {
+    private BulkheadManagerImpl bulkheadManager;
     private FailsafeCircuitBreakerManager circuitBreakerManager;
     private FailsafeRetryManager retryManager;
     private ExecutionPlanFactory executionPlanFactory;
@@ -39,7 +42,9 @@ public class FailsafeExecutionManager implements ExecutionManager {
     public FailsafeExecutionManager() {
         this.circuitBreakerManager = new FailsafeCircuitBreakerManager();
         this.retryManager = new FailsafeRetryManager();
-        this.executionPlanFactory = new ExecutionPlanFactory(this.circuitBreakerManager, this.retryManager);
+        this.bulkheadManager = new BulkheadManagerImpl();
+        this.executionPlanFactory = new ExecutionPlanFactory(this.circuitBreakerManager, this.retryManager,
+                this.bulkheadManager);
     }
 
     public Object execute(InvocationContext invocationContext) {
@@ -72,6 +77,11 @@ public class FailsafeExecutionManager implements ExecutionManager {
     @Override
     public FailsafeRetryManager getRetryManager() {
         return retryManager;
+    }
+
+    @Override
+    public BulkheadManager getBulkheadManager() {
+        return bulkheadManager;
     }
 
 }

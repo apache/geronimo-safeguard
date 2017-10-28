@@ -44,7 +44,7 @@ public class FailsafeCircuitBreakerBuilder implements CircuitBreakerBuilder {
 
     @Override
     public FailsafeCircuitBreakerBuilder withDelay(Duration delay) {
-        circuitBreaker.withDelay(delay.toMillis(), TimeUnit.MILLISECONDS);
+        circuitBreaker.withDelay(delay.toNanos(), TimeUnit.NANOSECONDS);
         return this;
     }
 

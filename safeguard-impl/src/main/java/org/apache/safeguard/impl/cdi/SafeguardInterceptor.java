@@ -22,7 +22,9 @@ package org.apache.safeguard.impl.cdi;
 import org.apache.safeguard.api.SafeguardEnabled;
 import org.apache.safeguard.impl.FailsafeExecutionManager;
 import org.apache.safeguard.impl.util.AnnotationUtil;
+import org.eclipse.microprofile.faulttolerance.Bulkhead;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Fallback;
 import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.faulttolerance.Timeout;
 
@@ -55,6 +57,8 @@ public class SafeguardInterceptor {
     private boolean isMethodSafeguarded(Method method) {
         return AnnotationUtil.getAnnotation(method, Retry.class) != null ||
                 AnnotationUtil.getAnnotation(method, CircuitBreaker.class) != null ||
-                AnnotationUtil.getAnnotation(method, Timeout.class) != null;
+                AnnotationUtil.getAnnotation(method, Timeout.class) != null ||
+                AnnotationUtil.getAnnotation(method, Fallback.class) != null ||
+                AnnotationUtil.getAnnotation(method, Bulkhead.class) != null;
     }
 }

@@ -50,19 +50,19 @@ public class FailsafeRetryBuilder implements RetryBuilder{
 
     @Override
     public FailsafeRetryBuilder withDelay(Duration delay) {
-        retryPolicy.withDelay(delay.toMillis(), TimeUnit.MILLISECONDS);
+        retryPolicy.withDelay(delay.toNanos(), TimeUnit.NANOSECONDS);
         return this;
     }
 
     @Override
     public FailsafeRetryBuilder withMaxDuration(Duration maxDuration) {
-        retryPolicy.withMaxDuration(maxDuration.toMillis(), TimeUnit.MILLISECONDS);
+        retryPolicy.withMaxDuration(maxDuration.toNanos(), TimeUnit.NANOSECONDS);
         return this;
     }
 
     @Override
     public FailsafeRetryBuilder withJitter(Duration jitter) {
-        retryPolicy.withJitter(jitter.toMillis(), TimeUnit.MILLISECONDS);
+        retryPolicy.withJitter(jitter.toNanos(), TimeUnit.NANOSECONDS);
         return this;
     }
 

@@ -17,20 +17,24 @@
  *  under the License.
  */
 
-package org.apache.safeguard.api;
+package org.apache.safeguard.exception;
 
-import org.apache.safeguard.api.bulkhead.BulkheadManager;
-import org.apache.safeguard.api.circuitbreaker.CircuitBreakerManager;
-import org.apache.safeguard.api.retry.RetryManager;
+import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceException;
 
-import java.util.concurrent.Callable;
+public class SafeguardException extends FaultToleranceException{
+    public SafeguardException() {
+    }
 
-public interface ExecutionManager {
-    <T> T execute(String name, Callable<T> callable);
+    public SafeguardException(String message) {
+        super(message);
+    }
 
-    CircuitBreakerManager getCircuitBreakerManager();
+    public SafeguardException(String message, Throwable cause) {
+        super(message, cause);
+    }
 
-    RetryManager getRetryManager();
+    public SafeguardException(Throwable cause) {
+        super(cause);
+    }
 
-    BulkheadManager getBulkheadManager();
 }

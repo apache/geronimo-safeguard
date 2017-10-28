@@ -19,6 +19,9 @@
 
 package org.apache.safeguard.impl.executionPlans;
 
+import org.apache.safeguard.api.bulkhead.Bulkhead;
+import org.apache.safeguard.api.bulkhead.BulkheadBuilder;
+import org.apache.safeguard.api.bulkhead.BulkheadManager;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerBuilder;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerManager;
@@ -26,7 +29,6 @@ import org.apache.safeguard.impl.fallback.FallbackRunner;
 import org.apache.safeguard.impl.retry.FailsafeRetryBuilder;
 import org.apache.safeguard.impl.retry.FailsafeRetryDefinition;
 import org.apache.safeguard.impl.retry.FailsafeRetryManager;
-import org.apache.safeguard.impl.util.AnnotationUtil;
 import org.apache.safeguard.impl.util.NamingUtil;
 import org.eclipse.microprofile.config.Config;
 import org.eclipse.microprofile.config.ConfigProvider;
@@ -38,23 +40,28 @@ import org.eclipse.microprofile.faulttolerance.Timeout;
 
 import java.lang.reflect.Method;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.safeguard.impl.executionPlans.MicroprofileAnnotationMapper.mapCircuitBreaker;
 import static org.apache.safeguard.impl.executionPlans.MicroprofileAnnotationMapper.mapRetry;
+import static org.apache.safeguard.impl.util.AnnotationUtil.getAnnotation;
 
 public class ExecutionPlanFactory {
     private final FailsafeCircuitBreakerManager circuitBreakerManager;
     private final FailsafeRetryManager retryManager;
-    private Map<String, ExecutionPlan> executionPlanMap = new HashMap<>();
+    private final BulkheadManager bulkheadManager;
+    private ConcurrentMap<String, ExecutionPlan> executionPlanMap = new ConcurrentHashMap<>();
     private final boolean enableAllMicroProfileFeatures;
 
-    public ExecutionPlanFactory(FailsafeCircuitBreakerManager circuitBreakerManager, FailsafeRetryManager retryManager) {
+    public ExecutionPlanFactory(FailsafeCircuitBreakerManager circuitBreakerManager,
+                                FailsafeRetryManager retryManager,
+                                BulkheadManager bulkheadManager) {
         this.circuitBreakerManager = circuitBreakerManager;
         this.retryManager = retryManager;
+        this.bulkheadManager = bulkheadManager;
         this.enableAllMicroProfileFeatures = this.enableNonFallbacksForMicroProfile();
     }
 
@@ -73,34 +80,44 @@ public class ExecutionPlanFactory {
     public ExecutionPlan locateExecutionPlan(Method method) {
         final String name = NamingUtil.createName(method);
         return executionPlanMap.computeIfAbsent(name, key -> {
-            FailsafeCircuitBreaker circuitBreaker = circuitBreakerManager.getCircuitBreaker(key);
+            FailsafeCircuitBreaker circuitBreaker = circuitBreakerManager.getCircuitBreaker(name);
             if (circuitBreaker == null) {
                 circuitBreaker = createCBDefinition(name, method);
             }
-            FailsafeRetryDefinition retryDefinition = retryManager.getRetryDefinition(key);
+            FailsafeRetryDefinition retryDefinition = retryManager.getRetryDefinition(name);
             if (retryDefinition == null) {
                 retryDefinition = createDefinition(name, method);
+            }
+            Bulkhead bulkhead = bulkheadManager.getBulkhead(name);
+            if (bulkhead == null) {
+                bulkhead = createBulkhead(name, method);
             }
             boolean isAsync = isAsync(method);
             Duration timeout = readTimeout(method);
             FallbackRunner fallbackRunner = this.createFallback(method);
             if(this.enableAllMicroProfileFeatures) {
+                BulkheadExecutionPlan parent = new BulkheadExecutionPlan(bulkhead);
                 if (circuitBreaker == null && retryDefinition == null && isAsync) {
                     if (timeout == null) {
-                        return new AsyncOnlyExecutionPlan(null);
+                        parent.setChild(new AsyncOnlyExecutionPlan(null));
                     } else {
-                        return new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5));
+                        parent.setChild(new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5)));
                     }
                 } else if (circuitBreaker == null && retryDefinition == null && timeout != null) {
                     // then its just timeout
-                    return new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5));
+                    parent.setChild(new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5)));
                 } else {
                     if (isAsync || timeout != null) {
-                        return new AsyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner, Executors.newScheduledThreadPool(5), timeout);
+                        parent.setChild(new AsyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner, Executors.newScheduledThreadPool(5), timeout));;
+                    } else if(circuitBreaker == null && retryDefinition == null && fallbackRunner == null) {
+                        parent.setChild(new BasicExecutionPlan());
+                    } else if(circuitBreaker == null && retryDefinition == null) {
+                        parent.setChild(new FallbackOnlyExecutionPlan(fallbackRunner));
                     } else {
-                        return new SyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner);
+                        parent.setChild(new SyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner));
                     }
                 }
+                return parent;
             }else {
                 if(fallbackRunner == null) {
                     return new BasicExecutionPlan();
@@ -109,6 +126,7 @@ public class ExecutionPlanFactory {
                     return new FallbackOnlyExecutionPlan(fallbackRunner);
                 }
             }
+
         });
     }
 
@@ -126,7 +144,7 @@ public class ExecutionPlanFactory {
     }
 
     private FailsafeRetryDefinition createDefinition(String name, Method method) {
-        Retry retry = AnnotationUtil.getAnnotation(method, Retry.class);
+        Retry retry = getAnnotation(method, Retry.class);
         if (retry == null) {
             return null;
         }
@@ -135,7 +153,7 @@ public class ExecutionPlanFactory {
     }
 
     private FailsafeCircuitBreaker createCBDefinition(String name, Method method) {
-        CircuitBreaker circuitBreaker = AnnotationUtil.getAnnotation(method, CircuitBreaker.class);
+        CircuitBreaker circuitBreaker = getAnnotation(method, CircuitBreaker.class);
         if (circuitBreaker == null) {
             return null;
         }
@@ -143,8 +161,25 @@ public class ExecutionPlanFactory {
         return new FailsafeCircuitBreaker(mapCircuitBreaker(circuitBreaker, circuitBreakerBuilder));
     }
 
+    private Bulkhead createBulkhead(String name, Method method) {
+        org.eclipse.microprofile.faulttolerance.Bulkhead annotation = getAnnotation(method,
+                org.eclipse.microprofile.faulttolerance.Bulkhead.class);
+        if (annotation == null) {
+            return null;
+        }
+        boolean async = getAnnotation(method, Asynchronous.class) != null;
+        BulkheadBuilder bulkheadBuilder = this.bulkheadManager.newBulkheadBuilder(name)
+                .withMaxWaiting(annotation.waitingTaskQueue())
+                .withMaxConcurrency(annotation.value());
+        if(async) {
+            bulkheadBuilder.asynchronous();
+        }
+        bulkheadBuilder.build();
+        return bulkheadManager.getBulkhead(name);
+    }
+
     private FallbackRunner createFallback(Method method) {
-        Fallback fallback = AnnotationUtil.getAnnotation(method, Fallback.class);
+        Fallback fallback = getAnnotation(method, Fallback.class);
         if(fallback == null) {
             return null;
         }
@@ -153,11 +188,12 @@ public class ExecutionPlanFactory {
     }
 
     private boolean isAsync(Method method) {
-        return AnnotationUtil.getAnnotation(method, Asynchronous.class) != null;
+        return getAnnotation(method, Asynchronous.class) != null &&
+                getAnnotation(method, org.eclipse.microprofile.faulttolerance.Bulkhead.class) == null;
     }
 
     private Duration readTimeout(Method method) {
-        Timeout timeout = AnnotationUtil.getAnnotation(method, Timeout.class);
+        Timeout timeout = getAnnotation(method, Timeout.class);
         if(timeout == null) {
             return null;
         }

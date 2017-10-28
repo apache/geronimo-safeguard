@@ -41,7 +41,7 @@ class AsyncTimeoutExecutionPlan implements ExecutionPlan {
     public <T> T execute(Callable<T> callable, InvocationContext invocationContext) {
         Future<T> future = executorService.submit(callable);
         try {
-            return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            return future.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
         } catch (ExecutionException e) {
             if(e.getCause() != null && e.getCause() instanceof RuntimeException) {
                 throw (RuntimeException)e.getCause();

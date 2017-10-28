@@ -17,20 +17,14 @@
  *  under the License.
  */
 
-package org.apache.safeguard.api;
+package org.apache.safeguard.api.bulkhead;
 
-import org.apache.safeguard.api.bulkhead.BulkheadManager;
-import org.apache.safeguard.api.circuitbreaker.CircuitBreakerManager;
-import org.apache.safeguard.api.retry.RetryManager;
+public interface BulkheadBuilder {
+    BulkheadBuilder withMaxConcurrency(int maxConcurrency);
 
-import java.util.concurrent.Callable;
+    BulkheadBuilder withMaxWaiting(int overflowCapacity);
 
-public interface ExecutionManager {
-    <T> T execute(String name, Callable<T> callable);
+    BulkheadBuilder asynchronous();
 
-    CircuitBreakerManager getCircuitBreakerManager();
-
-    RetryManager getRetryManager();
-
-    BulkheadManager getBulkheadManager();
+    BulkheadDefinition build();
 }

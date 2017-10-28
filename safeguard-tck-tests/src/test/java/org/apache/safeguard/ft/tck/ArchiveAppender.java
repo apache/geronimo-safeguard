@@ -34,7 +34,7 @@ import org.jboss.shrinkwrap.api.spec.WebArchive;
 import javax.enterprise.inject.spi.Extension;
 
 public class ArchiveAppender implements ApplicationArchiveProcessor {
-    private static final StringAsset BEANS_XML = new StringAsset("<beans version=\"1.1\" bean-discovery-mode=\"annotated\"/>");
+    private static final StringAsset BEANS_XML = new StringAsset("<beans version=\"1.1\" bean-discovery-mode=\"all\"/>");
 
     @Override
     public void process(Archive<?> archive, TestClass testClass) {

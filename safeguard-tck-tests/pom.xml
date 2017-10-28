@@ -72,11 +72,6 @@
                     </dependenciesToScan>
                     <excludes>
                         <exclude>org.eclipse.microprofile.fault.tolerance.tck.ConfigTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadAsynchRetryTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadAsynchTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadFutureTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadSynchRetryTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadSynchTest</exclude>
                         <exclude>org.eclipse.microprofile.fault.tolerance.tck.illegalConfig.IncompatibleFallbackMethodTest</exclude>
                         <exclude>org.eclipse.microprofile.fault.tolerance.tck.illegalConfig.IncompatibleFallbackMethodWithArgsTest</exclude>
                         <exclude>org.eclipse.microprofile.fault.tolerance.tck.illegalConfig.IncompatibleFallbackTest</exclude>

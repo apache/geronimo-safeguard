@@ -51,7 +51,7 @@ class TimeoutWrappedCallable<T> implements Callable<T> {
             throw new CircuitBreakerOpenException();
         }
         ScheduledFuture<?> scheduledFuture = executorService.schedule(new TimerRunnable(Thread.currentThread(), this),
-                timeout.toMillis(), TimeUnit.MILLISECONDS);
+                timeout.toNanos(), TimeUnit.NANOSECONDS);
 
         T result;
         try {
