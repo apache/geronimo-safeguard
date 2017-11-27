@@ -133,12 +133,10 @@ public class ExecutionPlanFactory {
     private boolean enableNonFallbacksForMicroProfile() {
         try {
             Class.forName("org.eclipse.microprofile.config.Config");
-            Config config = ConfigProvider.getConfig();
-            AtomicBoolean disableExecutions = new AtomicBoolean(true);
-            config.getOptionalValue("MP_Fault_Tolerance_NonFallback_Enabled", Boolean.class)
-                    .ifPresent(disableExecutions::set);
-            return disableExecutions.get();
-        } catch (ClassNotFoundException e) {
+            return ConfigProvider.getConfig()
+                                 .getOptionalValue("MP_Fault_Tolerance_NonFallback_Enabled", Boolean.class)
+                                 .orElse(true);
+        } catch (ClassNotFoundException | NoClassDefFoundError | ExceptionInInitializerError e) {
             return true;
         }
     }
