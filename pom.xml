@@ -55,8 +55,8 @@
         <maven.compiler.target>1.8</maven.compiler.target>
         <microprofile-fault-tolerance.version>1.0</microprofile-fault-tolerance.version>
         <owb.version>2.0.1</owb.version>
-        <arquillian.version>1.1.13.Final</arquillian.version>
-        <arquillian-weld-embedded.version>2.0.0.Beta5</arquillian-weld-embedded.version>
+        <arquillian.version>1.1.14.Final</arquillian.version>
+        <arquillian-weld-embedded.version>2.0.0.Final</arquillian-weld-embedded.version>
         <cdi2-api.version>2.0</cdi2-api.version>
         <weld.version>3.0.1.Final</weld.version>
     </properties>

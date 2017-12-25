@@ -19,6 +19,7 @@
 
 package org.apache.safeguard.impl.executionPlans;
 
+import org.apache.safeguard.exception.SafeguardException;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerBuilder;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerDefinition;
 import org.apache.safeguard.impl.retry.FailsafeRetryBuilder;
@@ -30,6 +31,8 @@ import java.time.Duration;
 import java.util.concurrent.TimeoutException;
 
 class MicroprofileAnnotationMapper {
+    private static final String RETRY_FORMAT = "%s/Retry/%s";
+    private static final String CIRCUIT_BREAKER_FORMAT = "%s/CircuitBreaker/%s";
     static FailsafeRetryDefinition mapRetry(Retry retry, FailsafeRetryBuilder retryBuilder) {
         retryBuilder.withMaxRetries(retry.maxRetries())
                 .withRetryOn(retry.retryOn())

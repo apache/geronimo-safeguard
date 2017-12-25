@@ -72,23 +72,6 @@
                     </dependenciesToScan>
                     <excludes>
                         <exclude>org.eclipse.microprofile.fault.tolerance.tck.ConfigTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.illegalConfig.IncompatibleFallbackMethodTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.illegalConfig.IncompatibleFallbackMethodWithArgsTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.illegalConfig.IncompatibleFallbackTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidBulkheadAsynchQueueTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidCircuitBreakerFailureRatioPosTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidCircuitBreakerFailureReqVol0Test</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidRetryJitterTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidCircuitBreakerFailureSuccess0Test</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidCircuitBreakerDelayTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidRetryDelayTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidCircuitBreakerFailureRatioNegTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidBulkheadValueTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidCircuitBreakerFailureReqVolNegTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidRetryDelayDurationTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidTimeoutValueTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidCircuitBreakerFailureSuccessNegTest</exclude>
-                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidRetryMaxRetriesTest</exclude>
                     </excludes>
                 </configuration>
             </plugin>

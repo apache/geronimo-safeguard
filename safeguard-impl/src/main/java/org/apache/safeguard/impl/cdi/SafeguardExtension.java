@@ -26,6 +26,7 @@ import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.faulttolerance.Timeout;
 
 import javax.enterprise.event.Observes;
+import javax.enterprise.inject.spi.AfterBeanDiscovery;
 import javax.enterprise.inject.spi.AnnotatedConstructor;
 import javax.enterprise.inject.spi.AnnotatedField;
 import javax.enterprise.inject.spi.AnnotatedMethod;
@@ -42,12 +43,17 @@ import java.util.Set;
 import static org.apache.safeguard.api.SafeguardEnabled.INSTANCE;
 
 public class SafeguardExtension implements Extension {
-    public void findFaultTolerantBeans(@Observes @WithAnnotations({Retry.class, CircuitBreaker.class, Timeout.class,
-            Bulkhead.class})
-                                               ProcessAnnotatedType<?> pat) {
+    private MicroProfileValidator microProfileValidator = new MicroProfileValidator();
+    public <X> void findFaultTolerantBeans(@Observes @WithAnnotations({Retry.class, CircuitBreaker.class, Timeout.class,
+            Bulkhead.class}) ProcessAnnotatedType<X> pat) {
         if (!pat.getAnnotatedType().isAnnotationPresent(SafeguardEnabled.class)) {
-            pat.setAnnotatedType(new SafeguardAnnotatedTypeWrapper(pat.getAnnotatedType()));
+            pat.setAnnotatedType(new SafeguardAnnotatedTypeWrapper<>(pat.getAnnotatedType()));
         }
+        microProfileValidator.parse(pat.getAnnotatedType());
+    }
+
+    public void throwExceptions(@Observes AfterBeanDiscovery afterBeanDiscovery) {
+        microProfileValidator.forThrowable(afterBeanDiscovery::addDefinitionError);
     }
 
     private static class SafeguardAnnotatedTypeWrapper<X> implements AnnotatedType<X> {

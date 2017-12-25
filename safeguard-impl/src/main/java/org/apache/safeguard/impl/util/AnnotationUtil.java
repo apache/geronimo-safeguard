@@ -19,6 +19,8 @@
 
 package org.apache.safeguard.impl.util;
 
+import javax.enterprise.inject.spi.AnnotatedMethod;
+import javax.enterprise.inject.spi.AnnotatedType;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 
@@ -34,5 +36,15 @@ public final class AnnotationUtil {
         else {
             return method.getDeclaringClass().getAnnotation(clazz);
         }
+    }
+
+    public static <T extends Annotation> T getAnnotation(AnnotatedMethod<?> method,
+                                                         AnnotatedType<?> type,
+                                                         Class<T> clazz) {
+        T annotation = method.getAnnotation(clazz);
+        if(annotation != null) {
+            return annotation;
+        }
+        return type.getAnnotation(clazz);
     }
 }
