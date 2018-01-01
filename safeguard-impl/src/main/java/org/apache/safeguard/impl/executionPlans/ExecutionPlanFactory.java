@@ -24,14 +24,15 @@ import org.apache.safeguard.api.bulkhead.BulkheadBuilder;
 import org.apache.safeguard.api.bulkhead.BulkheadManager;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerBuilder;
+import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerDefinition;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerManager;
+import org.apache.safeguard.api.config.ConfigFacade;
+import org.apache.safeguard.impl.config.MicroprofileAnnotationMapper;
 import org.apache.safeguard.impl.fallback.FallbackRunner;
 import org.apache.safeguard.impl.retry.FailsafeRetryBuilder;
 import org.apache.safeguard.impl.retry.FailsafeRetryDefinition;
 import org.apache.safeguard.impl.retry.FailsafeRetryManager;
 import org.apache.safeguard.impl.util.NamingUtil;
-import org.eclipse.microprofile.config.Config;
-import org.eclipse.microprofile.config.ConfigProvider;
 import org.eclipse.microprofile.faulttolerance.Asynchronous;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Fallback;
@@ -43,25 +44,25 @@ import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.apache.safeguard.impl.executionPlans.MicroprofileAnnotationMapper.mapCircuitBreaker;
-import static org.apache.safeguard.impl.executionPlans.MicroprofileAnnotationMapper.mapRetry;
 import static org.apache.safeguard.impl.util.AnnotationUtil.getAnnotation;
 
 public class ExecutionPlanFactory {
     private final FailsafeCircuitBreakerManager circuitBreakerManager;
     private final FailsafeRetryManager retryManager;
     private final BulkheadManager bulkheadManager;
+    private final MicroprofileAnnotationMapper microprofileAnnotationMapper;
     private ConcurrentMap<String, ExecutionPlan> executionPlanMap = new ConcurrentHashMap<>();
     private final boolean enableAllMicroProfileFeatures;
 
     public ExecutionPlanFactory(FailsafeCircuitBreakerManager circuitBreakerManager,
                                 FailsafeRetryManager retryManager,
-                                BulkheadManager bulkheadManager) {
+                                BulkheadManager bulkheadManager,
+                                MicroprofileAnnotationMapper microprofileAnnotationMapper) {
         this.circuitBreakerManager = circuitBreakerManager;
         this.retryManager = retryManager;
         this.bulkheadManager = bulkheadManager;
+        this.microprofileAnnotationMapper = microprofileAnnotationMapper;
         this.enableAllMicroProfileFeatures = this.enableNonFallbacksForMicroProfile();
     }
 
@@ -131,16 +132,7 @@ public class ExecutionPlanFactory {
     }
 
     private boolean enableNonFallbacksForMicroProfile() {
-        try {
-            Class.forName("org.eclipse.microprofile.config.Config");
-            Config config = ConfigProvider.getConfig();
-            AtomicBoolean disableExecutions = new AtomicBoolean(true);
-            config.getOptionalValue("MP_Fault_Tolerance_NonFallback_Enabled", Boolean.class)
-                    .ifPresent(disableExecutions::set);
-            return disableExecutions.get();
-        } catch (ClassNotFoundException e) {
-            return true;
-        }
+        return ConfigFacade.getInstance().getBoolean("MP_Fault_Tolerance_NonFallback_Enabled", true);
     }
 
     private FailsafeRetryDefinition createDefinition(String name, Method method) {
@@ -149,7 +141,7 @@ public class ExecutionPlanFactory {
             return null;
         }
         FailsafeRetryBuilder retryBuilder = retryManager.newRetryDefinition(name);
-        return mapRetry(retry, retryBuilder);
+        return microprofileAnnotationMapper.mapRetry(method, retry, retryBuilder);
     }
 
     private FailsafeCircuitBreaker createCBDefinition(String name, Method method) {
@@ -158,7 +150,9 @@ public class ExecutionPlanFactory {
             return null;
         }
         FailsafeCircuitBreakerBuilder circuitBreakerBuilder = this.circuitBreakerManager.newCircuitBreaker(name);
-        return new FailsafeCircuitBreaker(mapCircuitBreaker(circuitBreaker, circuitBreakerBuilder));
+        FailsafeCircuitBreakerDefinition circuitBreakerDefinition = microprofileAnnotationMapper.mapCircuitBreaker(method,
+                circuitBreaker, circuitBreakerBuilder);
+        return new FailsafeCircuitBreaker(circuitBreakerDefinition);
     }
 
     private Bulkhead createBulkhead(String name, Method method) {

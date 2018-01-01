@@ -20,6 +20,7 @@
 package org.apache.safeguard.ft.tck;
 
 import org.apache.safeguard.api.SafeguardEnabled;
+import org.apache.safeguard.api.config.ConfigFacade;
 import org.apache.safeguard.impl.cdi.FailsafeExecutionManagerProvider;
 import org.apache.safeguard.impl.cdi.SafeguardExtension;
 import org.apache.safeguard.impl.cdi.SafeguardInterceptor;
@@ -38,6 +39,7 @@ public class ArchiveAppender implements ApplicationArchiveProcessor {
 
     @Override
     public void process(Archive<?> archive, TestClass testClass) {
+        ConfigFacade.setInstance(null);
         JavaArchive jar = ShrinkWrap.create(JavaArchive.class, "safeguard.jar")
                 .addClasses(SafeguardEnabled.class, SafeguardExtension.class, FailsafeExecutionManagerProvider.class, SafeguardInterceptor.class)
                 .addAsServiceProvider(Extension.class, SafeguardExtension.class)

@@ -21,8 +21,11 @@ package org.apache.safeguard.impl;
 
 import org.apache.safeguard.api.ExecutionManager;
 import org.apache.safeguard.api.bulkhead.BulkheadManager;
+import org.apache.safeguard.api.circuitbreaker.CircuitBreakerManager;
+import org.apache.safeguard.api.retry.RetryManager;
 import org.apache.safeguard.impl.bulkhead.BulkheadManagerImpl;
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerManager;
+import org.apache.safeguard.impl.config.MicroprofileAnnotationMapper;
 import org.apache.safeguard.impl.executionPlans.ExecutionPlanFactory;
 import org.apache.safeguard.impl.retry.FailsafeRetryManager;
 
@@ -34,17 +37,31 @@ import java.util.concurrent.Callable;
 
 @Vetoed
 public class FailsafeExecutionManager implements ExecutionManager {
-    private BulkheadManagerImpl bulkheadManager;
-    private FailsafeCircuitBreakerManager circuitBreakerManager;
-    private FailsafeRetryManager retryManager;
-    private ExecutionPlanFactory executionPlanFactory;
+    private final MicroprofileAnnotationMapper mapper;
+    private final BulkheadManager bulkheadManager;
+    private final CircuitBreakerManager circuitBreakerManager;
+    private final RetryManager retryManager;
+    private final ExecutionPlanFactory executionPlanFactory;
 
     public FailsafeExecutionManager() {
-        this.circuitBreakerManager = new FailsafeCircuitBreakerManager();
-        this.retryManager = new FailsafeRetryManager();
-        this.bulkheadManager = new BulkheadManagerImpl();
-        this.executionPlanFactory = new ExecutionPlanFactory(this.circuitBreakerManager, this.retryManager,
-                this.bulkheadManager);
+        FailsafeCircuitBreakerManager circuitBreakerManager = new FailsafeCircuitBreakerManager();
+        FailsafeRetryManager retryManager = new FailsafeRetryManager();
+        BulkheadManagerImpl bulkheadManager = new BulkheadManagerImpl();
+        this.mapper = MicroprofileAnnotationMapper.getInstance();
+        this.executionPlanFactory = new ExecutionPlanFactory(circuitBreakerManager, retryManager, bulkheadManager, mapper);
+        this.circuitBreakerManager = circuitBreakerManager;
+        this.retryManager = retryManager;
+        this.bulkheadManager = bulkheadManager;
+    }
+
+    public FailsafeExecutionManager(MicroprofileAnnotationMapper mapper, BulkheadManagerImpl bulkheadManager,
+                                    FailsafeCircuitBreakerManager circuitBreakerManager, FailsafeRetryManager retryManager,
+                                    ExecutionPlanFactory executionPlanFactory) {
+        this.mapper = mapper;
+        this.bulkheadManager = bulkheadManager;
+        this.circuitBreakerManager = circuitBreakerManager;
+        this.retryManager = retryManager;
+        this.executionPlanFactory = executionPlanFactory;
     }
 
     public Object execute(InvocationContext invocationContext) {
@@ -70,12 +87,12 @@ public class FailsafeExecutionManager implements ExecutionManager {
     }
 
     @Override
-    public FailsafeCircuitBreakerManager getCircuitBreakerManager() {
+    public CircuitBreakerManager getCircuitBreakerManager() {
         return circuitBreakerManager;
     }
 
     @Override
-    public FailsafeRetryManager getRetryManager() {
+    public RetryManager getRetryManager() {
         return retryManager;
     }
 

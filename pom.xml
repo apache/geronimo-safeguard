@@ -59,6 +59,8 @@
         <arquillian-weld-embedded.version>2.0.0.Final</arquillian-weld-embedded.version>
         <cdi2-api.version>2.0</cdi2-api.version>
         <weld.version>3.0.1.Final</weld.version>
+        <geronimo-config-impl.version>1.1-SNAPSHOT</geronimo-config-impl.version>
+        <microprofile-config-api.version>1.2</microprofile-config-api.version>
     </properties>
 
     <dependencyManagement>
@@ -94,13 +96,13 @@
             <dependency>
                 <groupId>org.eclipse.microprofile.config</groupId>
                 <artifactId>microprofile-config-api</artifactId>
-                <version>1.1</version>
+                <version>${microprofile-config-api.version}</version>
                 <optional>true</optional>
             </dependency>
             <dependency>
                 <groupId>org.apache.geronimo.config</groupId>
                 <artifactId>geronimo-config-impl</artifactId>
-                <version>1.0</version>
+                <version>${geronimo-config-impl.version}</version>
                 <scope>test</scope>
             </dependency>
             <dependency>

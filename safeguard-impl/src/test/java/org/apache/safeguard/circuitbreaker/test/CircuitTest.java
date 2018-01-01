@@ -19,13 +19,11 @@
 
 package org.apache.safeguard.circuitbreaker.test;
 
+import org.apache.safeguard.api.circuitbreaker.CircuitBreaker;
 import org.apache.safeguard.api.circuitbreaker.CircuitBreakerState;
 import org.apache.safeguard.impl.FailsafeExecutionManager;
-import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
-
-import java.util.concurrent.Callable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -45,7 +43,7 @@ public class CircuitTest {
                 .withFailureCount(failureCount)
                 .withFailOn(Exception.class)
                 .build();
-        FailsafeCircuitBreaker circuitBreaker = failsafeExecutionManager.getCircuitBreakerManager().getCircuitBreaker(name);
+        CircuitBreaker circuitBreaker = failsafeExecutionManager.getCircuitBreakerManager().getCircuitBreaker(name);
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreakerState.CLOSED);
         for(int i = 0; i<failureCount;i++) {
             try {

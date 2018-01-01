@@ -19,9 +19,9 @@
 
 package org.apache.safeguard.circuitretry.test;
 
+import org.apache.safeguard.api.circuitbreaker.CircuitBreaker;
 import org.apache.safeguard.api.circuitbreaker.CircuitBreakerState;
 import org.apache.safeguard.impl.FailsafeExecutionManager;
-import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
 import org.testng.annotations.Test;
 
 import java.time.Duration;
@@ -46,7 +46,7 @@ public class RetryCircuitTest {
                 .withDelay(Duration.ofMillis(5000))
                 .withFailOn(RuntimeException.class)
                 .build();
-        FailsafeCircuitBreaker circuitBreaker = failsafeExecutionManager.getCircuitBreakerManager().getCircuitBreaker(name);
+        CircuitBreaker circuitBreaker = failsafeExecutionManager.getCircuitBreakerManager().getCircuitBreaker(name);
 
         SimpleCallable simpleCallable = new SimpleCallable();
         try {

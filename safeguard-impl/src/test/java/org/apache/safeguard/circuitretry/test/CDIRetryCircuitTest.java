@@ -20,9 +20,9 @@
 package org.apache.safeguard.circuitretry.test;
 
 import org.apache.safeguard.SafeguardCDITest;
+import org.apache.safeguard.api.circuitbreaker.CircuitBreaker;
 import org.apache.safeguard.api.circuitbreaker.CircuitBreakerState;
 import org.apache.safeguard.impl.FailsafeExecutionManager;
-import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreaker;
 import org.apache.safeguard.impl.util.NamingUtil;
 import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.shrinkwrap.api.Archive;
@@ -55,7 +55,7 @@ public class CDIRetryCircuitTest extends SafeguardCDITest{
 
         Method method = CDISimpleCallable.class.getMethod("call");
         String name = NamingUtil.createName(method);
-        FailsafeCircuitBreaker circuitBreaker = executionManager.getCircuitBreakerManager().getCircuitBreaker(name);
+        CircuitBreaker circuitBreaker = executionManager.getCircuitBreakerManager().getCircuitBreaker(name);
 
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreakerState.OPEN);
         assertThat(simpleCallable.getCounter()).isEqualTo(4);
