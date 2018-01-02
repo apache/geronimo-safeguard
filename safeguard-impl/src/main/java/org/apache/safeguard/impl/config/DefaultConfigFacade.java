@@ -20,49 +20,56 @@
 package org.apache.safeguard.impl.config;
 
 import java.time.temporal.ChronoUnit;
+import java.util.Optional;
+import java.util.stream.Stream;
+
+import javax.annotation.Priority;
 
 import org.apache.safeguard.api.config.ConfigFacade;
 import org.eclipse.microprofile.config.Config;
 import org.eclipse.microprofile.config.ConfigProvider;
 
-class MicroProfileConfigFacade extends ConfigFacade {
-    private final Config config;
-
-    public MicroProfileConfigFacade() {
-        this(ConfigProvider.getConfig());
-    }
-
-    public MicroProfileConfigFacade(Config config) {
-        this.config = config;
-    }
-
+class DefaultConfigFacade extends ConfigFacade {
     @Override
     public boolean getBoolean(String name, boolean defaultValue) {
-        return config.getOptionalValue(name, Boolean.class).orElse(defaultValue);
+        return getOptionalValue(name).map(Boolean::parseBoolean).orElse(defaultValue);
     }
 
     @Override
     public long getLong(String name, long defaultValue) {
-        return config.getOptionalValue(name, Long.class).orElse(defaultValue);
+        return getOptionalValue(name).map(Long::parseLong).orElse(defaultValue);
     }
 
     @Override
     public int getInt(String name, int defaultValue) {
-        return config.getOptionalValue(name, Integer.class).orElse(defaultValue);
+        return getOptionalValue(name).map(Integer::parseInt).orElse(defaultValue);
     }
 
     @Override
     public double getDouble(String name, double defaultValue) {
-        return config.getOptionalValue(name, Double.class).orElse(defaultValue);
+        return getOptionalValue(name).map(Double::parseDouble).orElse(defaultValue);
     }
 
     @Override
     public ChronoUnit getChronoUnit(String name, ChronoUnit defaultValue) {
-        return config.getOptionalValue(name, ChronoUnit.class).orElse(defaultValue);
+        return getOptionalValue(name).map(ChronoUnit::valueOf).orElse(defaultValue);
     }
 
     @Override
     public Class<? extends Throwable>[] getThrowableClasses(String name, Class<? extends Throwable>[] defaultValue) {
-        return config.getOptionalValue(name, Class[].class).orElse(defaultValue);
+        return getOptionalValue(name).map(value -> {
+            final ClassLoader loader = Thread.currentThread().getContextClassLoader();
+            return Stream.of(name.split(",")).map(clazz -> {
+                try {
+                    return loader.loadClass(clazz.trim());
+                } catch (final ClassNotFoundException e) {
+                    throw new IllegalArgumentException(e);
+                }
+            }).toArray(Class[]::new);
+        }).orElse(defaultValue);
+    }
+
+    private Optional<String> getOptionalValue(final String name) {
+        return Optional.ofNullable(Optional.ofNullable(System.getenv(name)).orElseGet(() -> System.getProperty(name)));
     }
 }
