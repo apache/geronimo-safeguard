@@ -29,7 +29,7 @@ pipeline {
               }
             }
             steps {
-                sh 'mvn -B source:jar deploy'
+                sh 'mvn -B source:jar deploy -DskipTests'
             }
         }
     }
