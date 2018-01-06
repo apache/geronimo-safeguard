@@ -13,13 +13,13 @@ pipeline {
         stage('Test'){
             steps {
                 sh 'mvn -B verify -POWB2'
-                junit 'reports/**/*.xml'
+                junit '**/TEST-*.xml'
             }
         }
         stage('Test - Weld') {
             steps {
                 sh 'mvn -B verify -PWeld3'
-                junit 'reports/**/*.xml'
+                junit '**/TEST-*.xml'
             }
         }
         stage('Deploy') {
