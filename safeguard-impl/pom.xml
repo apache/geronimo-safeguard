@@ -26,6 +26,7 @@
         <groupId>org.apache.geronimo.safeguard</groupId>
         <version>1.0-SNAPSHOT</version>
     </parent>
+    <name>Apache Safeguard :: Implementation (Failsafe)</name>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>safeguard-impl</artifactId>
