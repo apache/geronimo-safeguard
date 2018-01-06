@@ -2,7 +2,7 @@ pipeline {
     agent { node 'ubuntu' }
     tools {
         maven 'Maven 3.5.2'
-        java 'JDK 1.8 (latest)'
+        jdk 'JDK 1.8 (latest)'
     }
     stages {
         stage('Build') {
