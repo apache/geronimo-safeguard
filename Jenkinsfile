@@ -1,6 +1,8 @@
 pipeline {
     agent { node 'ubuntu' }
-
+    tools {
+        maven 'Maven 3.5.2'
+    }
     stages {
         stage('Build') {
             steps {
