@@ -59,8 +59,9 @@
         <arquillian-weld-embedded.version>2.0.0.Final</arquillian-weld-embedded.version>
         <cdi2-api.version>2.0</cdi2-api.version>
         <weld.version>3.0.1.Final</weld.version>
-        <geronimo-config-impl.version>1.1-SNAPSHOT</geronimo-config-impl.version>
+        <geronimo-config-impl.version>1.1</geronimo-config-impl.version>
         <microprofile-config-api.version>1.2</microprofile-config-api.version>
+        <failsafe.version>1.0.4</failsafe.version>
     </properties>
 
     <dependencyManagement>
@@ -73,7 +74,7 @@
             <dependency>
                 <groupId>net.jodah</groupId>
                 <artifactId>failsafe</artifactId>
-                <version>1.0.4</version>
+                <version>${failsafe.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.geronimo.specs</groupId>
