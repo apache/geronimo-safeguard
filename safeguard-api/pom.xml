@@ -22,7 +22,7 @@
     <parent>
         <artifactId>safeguard-parent</artifactId>
         <groupId>org.apache.geronimo.safeguard</groupId>
-        <version>1.0</version>
+        <version>1.1-SNAPSHOT</version>
     </parent>
     <name>Apache Safeguard :: API</name>
     <modelVersion>4.0.0</modelVersion>
