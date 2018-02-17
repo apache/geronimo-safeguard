@@ -31,31 +31,19 @@ A bulkhead throttles concurrent access to a method.  The throttling can either b
 
 ## Getting Started
 
-Apache Safeguard is currently in development.  You can use our snapshots from the Apache Snapshots repository.  These builds are in no way endorsed.
+Apache Safeguard is currently in development; however a 1.0 release was created that passes the MicroProfile Fault Tolerance TCK.  You can add the following dependencies to your project:
 
 ```xml
-<repositories>
-    <repository>
-        <id>apache-snapshot-repository</id>
-        <url>http://repository.apache.org/snapshots/</url>
-        <releases>
-            <enabled>false</enabled>
-        </releases>
-        <snapshots>
-            <enabled>true</enabled>
-        </snapshots>
-    </repository>
-</repositories>
 <dependencies>
     <dependency>
         <artifactId>safeguard-api</artifactId>
         <groupId>org.apache.geronimo.safeguard</groupId>
-        <version>1.0-SNAPSHOT</version>
+        <version>1.0</version>
     </dependency>
     <dependency>
         <artifactId>safeguard-impl</artifactId>
         <groupId>org.apache.geronimo.safeguard</groupId>
-        <version>1.0-SNAPSHOT</version>
+        <version>1.0</version>
     </dependency>
 </dependencies>
 ```
