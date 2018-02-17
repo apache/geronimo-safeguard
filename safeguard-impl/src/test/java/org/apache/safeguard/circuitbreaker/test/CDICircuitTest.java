@@ -20,9 +20,9 @@
 package org.apache.safeguard.circuitbreaker.test;
 
 import org.apache.safeguard.SafeguardCDITest;
+import org.apache.safeguard.api.ExecutionManager;
 import org.apache.safeguard.api.circuitbreaker.CircuitBreaker;
 import org.apache.safeguard.api.circuitbreaker.CircuitBreakerState;
-import org.apache.safeguard.impl.FailsafeExecutionManager;
 import org.apache.safeguard.impl.util.NamingUtil;
 import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.shrinkwrap.api.Archive;
@@ -43,7 +43,7 @@ public class CDICircuitTest extends SafeguardCDITest{
     private CDICircuitBean cdiCircuitBean;
 
     @Inject
-    private FailsafeExecutionManager failsafeExecutionManager;
+    private ExecutionManager executionManager;
 
     @Test
     public void shouldTriggerCircuitOpen() throws Exception {
@@ -53,7 +53,7 @@ public class CDICircuitTest extends SafeguardCDITest{
         for(int i = 0;i<5;i++) {
             try {
                 cdiCircuitBean.sayHello();
-                CircuitBreaker circuitBreaker = failsafeExecutionManager.getCircuitBreakerManager().getCircuitBreaker(name);
+                CircuitBreaker circuitBreaker = executionManager.getCircuitBreakerManager().getCircuitBreaker(name);
                 if (i < 4) {
                     assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreakerState.CLOSED);
                 }
@@ -64,7 +64,7 @@ public class CDICircuitTest extends SafeguardCDITest{
             catch (Exception e){ }
         }
 
-        CircuitBreaker circuitBreaker = failsafeExecutionManager.getCircuitBreakerManager().getCircuitBreaker(name);
+        CircuitBreaker circuitBreaker = executionManager.getCircuitBreakerManager().getCircuitBreaker(name);
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreakerState.OPEN);
     }
 }

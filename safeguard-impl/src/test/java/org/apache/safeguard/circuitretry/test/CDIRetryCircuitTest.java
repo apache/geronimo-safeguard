@@ -20,9 +20,9 @@
 package org.apache.safeguard.circuitretry.test;
 
 import org.apache.safeguard.SafeguardCDITest;
+import org.apache.safeguard.api.ExecutionManager;
 import org.apache.safeguard.api.circuitbreaker.CircuitBreaker;
 import org.apache.safeguard.api.circuitbreaker.CircuitBreakerState;
-import org.apache.safeguard.impl.FailsafeExecutionManager;
 import org.apache.safeguard.impl.util.NamingUtil;
 import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.shrinkwrap.api.Archive;
@@ -44,7 +44,7 @@ public class CDIRetryCircuitTest extends SafeguardCDITest{
     private CDISimpleCallable simpleCallable;
 
     @Inject
-    private FailsafeExecutionManager executionManager;
+    private ExecutionManager executionManager;
 
     @Test
     public void shouldExecuteSevenTimes() throws Exception{

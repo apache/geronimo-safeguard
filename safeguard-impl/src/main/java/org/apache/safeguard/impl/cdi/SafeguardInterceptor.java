@@ -19,6 +19,7 @@
 
 package org.apache.safeguard.impl.cdi;
 
+import org.apache.safeguard.api.ExecutionManager;
 import org.apache.safeguard.api.SafeguardEnabled;
 import org.apache.safeguard.impl.FailsafeExecutionManager;
 import org.apache.safeguard.impl.util.AnnotationUtil;
@@ -42,12 +43,12 @@ import java.lang.reflect.Method;
 @Dependent
 public class SafeguardInterceptor {
     @Inject
-    private FailsafeExecutionManager failsafeExecutionManager;
+    private ExecutionManager executionManager;
 
     @AroundInvoke
     public Object runSafeguards(InvocationContext invocationContext) throws Exception{
         if(isMethodSafeguarded(invocationContext.getMethod())) {
-            return failsafeExecutionManager.execute(invocationContext);
+            return executionManager.execute(invocationContext);
         }
         else {
             return invocationContext.proceed();

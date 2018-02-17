@@ -23,10 +23,13 @@ import org.apache.safeguard.api.bulkhead.BulkheadManager;
 import org.apache.safeguard.api.circuitbreaker.CircuitBreakerManager;
 import org.apache.safeguard.api.retry.RetryManager;
 
+import javax.interceptor.InvocationContext;
 import java.util.concurrent.Callable;
 
 public interface ExecutionManager {
     <T> T execute(String name, Callable<T> callable);
+
+    Object execute(InvocationContext invocationContext);
 
     CircuitBreakerManager getCircuitBreakerManager();
 
