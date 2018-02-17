@@ -49,3 +49,31 @@ Apache Safeguard is currently in development; however a 1.0 release was created 
 ```
 
 Apache Safeguard implements the [MicroProfile Fault Tolerance v1.0 specification](https://github.com/eclipse/microprofile-fault-tolerance/releases/tag/1.0)
+
+### Integration
+
+The core of Safeguard is wrapped around an `ExecutionManager` which takes care of coordinating and storing the execution state of various methods.  It allows some configurability, but if you want to change it your best solution is to create an alternative of `ExecutionManager` with your customizations.  For instance, in an EE environment you may want to use a `ManagedScheduledExecutorService` which could be done:
+
+```java
+@ApplicationScoped
+@Specializes
+@Priority(100)
+public class MyExecutionManagerProvider extends FailsafeExecutionManagerProvider{
+    @Resource
+    private ManagedScheduledExecutorService executorService;
+    @Produces
+    @ApplicationScoped
+    public ExecutionManager createExecutionManager() {
+        FailsafeCircuitBreakerManager circuitBreakerManager = new FailsafeCircuitBreakerManager();
+        FailsafeRetryManager retryManager = new FailsafeRetryManager();
+        BulkheadManagerImpl bulkheadManager = new BulkheadManagerImpl();
+        DefaultExecutorServiceProvider executorServiceProvider = new DefaultExecutorServiceProvider(executorService);
+        ExecutionPlanFactory executionPlanFactory = new ExecutionPlanFactory(circuitBreakerManager, retryManager, bulkheadManager, mapper,
+                executorServiceProvider);
+        return FailsafeExecutionManager(MicroprofileAnnotationMapper.getInstance(), bulkheadManager, circuitBreakerManager, 
+                retryManager, executionPlanFactory, executorServiceProvider);
+    }
+}
+
+
+```

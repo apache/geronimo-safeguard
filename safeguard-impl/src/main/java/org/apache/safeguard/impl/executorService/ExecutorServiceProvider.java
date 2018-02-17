@@ -17,19 +17,15 @@
  *  under the License.
  */
 
-package org.apache.safeguard.impl.cdi;
+package org.apache.safeguard.impl.executorService;
 
-import org.apache.safeguard.api.ExecutionManager;
-import org.apache.safeguard.impl.FailsafeExecutionManager;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Produces;
-
-@ApplicationScoped
-public class FailsafeExecutionManagerProvider {
-    @Produces
-    @ApplicationScoped
-    public ExecutionManager createExecutionManager() {
-        return new FailsafeExecutionManager();
-    }
+/**
+ * Wraps the look up of an ExecutorService to handle SE and EE cases
+ */
+public interface ExecutorServiceProvider {
+    ExecutorService getExecutorService();
+    ScheduledExecutorService getScheduledExecutorService();
 }

@@ -28,6 +28,7 @@ import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerDefinition
 import org.apache.safeguard.impl.circuitbreaker.FailsafeCircuitBreakerManager;
 import org.apache.safeguard.api.config.ConfigFacade;
 import org.apache.safeguard.impl.config.MicroprofileAnnotationMapper;
+import org.apache.safeguard.impl.executorService.ExecutorServiceProvider;
 import org.apache.safeguard.impl.fallback.FallbackRunner;
 import org.apache.safeguard.impl.retry.FailsafeRetryBuilder;
 import org.apache.safeguard.impl.retry.FailsafeRetryDefinition;
@@ -52,17 +53,20 @@ public class ExecutionPlanFactory {
     private final FailsafeRetryManager retryManager;
     private final BulkheadManager bulkheadManager;
     private final MicroprofileAnnotationMapper microprofileAnnotationMapper;
+    private final ExecutorServiceProvider executorServiceProvider;
     private ConcurrentMap<String, ExecutionPlan> executionPlanMap = new ConcurrentHashMap<>();
     private final boolean enableAllMicroProfileFeatures;
 
     public ExecutionPlanFactory(FailsafeCircuitBreakerManager circuitBreakerManager,
                                 FailsafeRetryManager retryManager,
                                 BulkheadManager bulkheadManager,
-                                MicroprofileAnnotationMapper microprofileAnnotationMapper) {
+                                MicroprofileAnnotationMapper microprofileAnnotationMapper,
+                                ExecutorServiceProvider executorServiceProvider) {
         this.circuitBreakerManager = circuitBreakerManager;
         this.retryManager = retryManager;
         this.bulkheadManager = bulkheadManager;
         this.microprofileAnnotationMapper = microprofileAnnotationMapper;
+        this.executorServiceProvider = executorServiceProvider;
         this.enableAllMicroProfileFeatures = this.enableNonFallbacksForMicroProfile();
     }
 
@@ -100,16 +104,17 @@ public class ExecutionPlanFactory {
                 BulkheadExecutionPlan parent = new BulkheadExecutionPlan(bulkhead);
                 if (circuitBreaker == null && retryDefinition == null && isAsync) {
                     if (timeout == null) {
-                        parent.setChild(new AsyncOnlyExecutionPlan(null));
+                        parent.setChild(new AsyncOnlyExecutionPlan(executorServiceProvider.getExecutorService()));
                     } else {
-                        parent.setChild(new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5)));
+                        parent.setChild(new AsyncTimeoutExecutionPlan(timeout, executorServiceProvider.getExecutorService()));
                     }
                 } else if (circuitBreaker == null && retryDefinition == null && timeout != null) {
                     // then its just timeout
-                    parent.setChild(new AsyncTimeoutExecutionPlan(timeout, Executors.newFixedThreadPool(5)));
+                    parent.setChild(new AsyncTimeoutExecutionPlan(timeout, executorServiceProvider.getExecutorService()));
                 } else {
                     if (isAsync || timeout != null) {
-                        parent.setChild(new AsyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner, Executors.newScheduledThreadPool(5), timeout));;
+                        parent.setChild(new AsyncFailsafeExecutionPlan(retryDefinition, circuitBreaker, fallbackRunner,
+                                executorServiceProvider.getScheduledExecutorService(), timeout));;
                     } else if(circuitBreaker == null && retryDefinition == null && fallbackRunner == null) {
                         parent.setChild(new BasicExecutionPlan());
                     } else if(circuitBreaker == null && retryDefinition == null) {
