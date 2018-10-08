@@ -23,13 +23,15 @@ import org.apache.safeguard.api.ExecutionManager;
 import org.apache.safeguard.impl.FailsafeExecutionManager;
 
 import javax.enterprise.context.ApplicationScoped;
+import javax.enterprise.inject.Default;
 import javax.enterprise.inject.Produces;
 
+@Default
 @ApplicationScoped
 public class FailsafeExecutionManagerProvider {
     @Produces
     @ApplicationScoped
-    public ExecutionManager createExecutionManager() {
+    public ExecutionManager createExecutionManager() throws Exception {
         return new FailsafeExecutionManager();
     }
 }
