@@ -20,18 +20,10 @@
 package org.apache.safeguard.retry.test;
 
 import org.apache.safeguard.SafeguardCDITest;
-import org.apache.safeguard.impl.cdi.FailsafeExecutionManagerProvider;
-import org.apache.safeguard.impl.cdi.SafeguardExtension;
-import org.apache.safeguard.impl.cdi.SafeguardInterceptor;
 import org.jboss.arquillian.container.test.api.Deployment;
-import org.jboss.arquillian.testng.Arquillian;
 import org.jboss.shrinkwrap.api.Archive;
-import org.jboss.shrinkwrap.api.ShrinkWrap;
-import org.jboss.shrinkwrap.api.asset.EmptyAsset;
-import org.jboss.shrinkwrap.api.spec.JavaArchive;
 import org.testng.annotations.Test;
 
-import javax.enterprise.inject.spi.Extension;
 import javax.inject.Inject;
 
 import static org.assertj.core.api.Assertions.assertThat;
