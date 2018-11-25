@@ -24,20 +24,26 @@
         <groupId>org.apache.geronimo.safeguard</groupId>
         <version>1.1-SNAPSHOT</version>
     </parent>
-    <name>Apache Safeguard :: Implementation (Failsafe)</name>
+
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>safeguard-impl</artifactId>
+    <name>Apache Safeguard :: Implementation</name>
 
     <dependencies>
         <dependency>
-            <groupId>org.apache.geronimo.safeguard</groupId>
-            <artifactId>safeguard-api</artifactId>
+            <groupId>org.eclipse.microprofile.fault-tolerance</groupId>
+            <artifactId>microprofile-fault-tolerance-api</artifactId>
+            <version>${microprofile-fault-tolerance.version}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>net.jodah</groupId>
-            <artifactId>failsafe</artifactId>
+            <groupId>org.eclipse.microprofile.metrics</groupId>
+            <artifactId>microprofile-metrics-api</artifactId>
+            <version>1.1.1</version>
+            <scope>provided</scope>
         </dependency>
+
         <dependency>
             <groupId>org.jboss.arquillian.testng</groupId>
             <artifactId>arquillian-testng-container</artifactId>
@@ -74,5 +80,34 @@
             <groupId>org.apache.geronimo.config</groupId>
             <artifactId>geronimo-config-impl</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.eclipse.microprofile.fault-tolerance</groupId>
+            <artifactId>microprofile-fault-tolerance-tck</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.geronimo</groupId>
+            <artifactId>geronimo-metrics</artifactId>
+            <version>1.0.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.0.0-M1</version>
+                <configuration>
+                    <dependenciesToScan>
+                        <dependency>org.eclipse.microprofile.fault-tolerance:microprofile-fault-tolerance-tck</dependency>
+                    </dependenciesToScan>
+                    <excludes>
+                        <exclude>org.eclipse.microprofile.fault.tolerance.tck.ConfigTest</exclude>
+                    </excludes>
+                    <trimStackTrace>false</trimStackTrace>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

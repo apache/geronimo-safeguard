@@ -1,118 +1,72 @@
-/*
- *  Licensed to the Apache Software Foundation (ASF) under one
- *  or more contributor license agreements.  See the NOTICE file
- *  distributed with this work for additional information
- *  regarding copyright ownership.  The ASF licenses this file
- *  to you under the Apache License, Version 2.0 (the
- *  "License"); you may not use this file except in compliance
- *  with the License.  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing,
- *  software distributed under the License is distributed on an
- *  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- *  KIND, either express or implied.  See the License for the
- *  specific language governing permissions and limitations
- *  under the License.
- */
-
 package org.apache.safeguard.impl.cdi;
 
-import org.apache.safeguard.api.SafeguardEnabled;
-import org.eclipse.microprofile.faulttolerance.Bulkhead;
-import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
-import org.eclipse.microprofile.faulttolerance.Retry;
-import org.eclipse.microprofile.faulttolerance.Timeout;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.enterprise.event.Observes;
+import javax.enterprise.inject.Any;
+import javax.enterprise.inject.Default;
 import javax.enterprise.inject.spi.AfterBeanDiscovery;
-import javax.enterprise.inject.spi.AnnotatedConstructor;
-import javax.enterprise.inject.spi.AnnotatedField;
-import javax.enterprise.inject.spi.AnnotatedMethod;
-import javax.enterprise.inject.spi.AnnotatedType;
 import javax.enterprise.inject.spi.Extension;
 import javax.enterprise.inject.spi.ProcessAnnotatedType;
-import javax.enterprise.inject.spi.WithAnnotations;
-import java.lang.annotation.Annotation;
-import java.lang.reflect.Type;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.Set;
+import javax.enterprise.inject.spi.ProcessBean;
 
-import static org.apache.safeguard.api.SafeguardEnabled.INSTANCE;
+import org.apache.safeguard.impl.config.GeronimoFaultToleranceConfig;
+import org.apache.safeguard.impl.customizable.Safeguard;
+import org.apache.safeguard.impl.fallback.FallbackInterceptor;
 
+// todo: mp.fault.tolerance.interceptor.priority handling
 public class SafeguardExtension implements Extension {
-    private MicroProfileValidator microProfileValidator = new MicroProfileValidator();
-    public <X> void findFaultTolerantBeans(@Observes @WithAnnotations({Retry.class, CircuitBreaker.class, Timeout.class,
-            Bulkhead.class}) ProcessAnnotatedType<X> pat) {
-        if (!pat.getAnnotatedType().isAnnotationPresent(SafeguardEnabled.class)) {
-            pat.setAnnotatedType(new SafeguardAnnotatedTypeWrapper<>(pat.getAnnotatedType()));
-        }
-        microProfileValidator.parse(pat.getAnnotatedType());
+    private boolean foundExecutor;
+
+    void addFallbackInterceptor(@Observes final ProcessAnnotatedType<FallbackInterceptor> processAnnotatedType) {
+        processAnnotatedType.configureAnnotatedType().add(new FallbackBinding());
     }
 
-    public void throwExceptions(@Observes AfterBeanDiscovery afterBeanDiscovery) {
-        microProfileValidator.forThrowable(afterBeanDiscovery::addDefinitionError);
+    void onBean(@Observes final ProcessBean<?> bean) {
+        if (bean.getBean().getQualifiers().stream().anyMatch(it -> it.annotationType() == Safeguard.class)
+            && bean.getBean().getTypes().stream().anyMatch(it -> Executor.class.isAssignableFrom(toClass(it)))) {
+            foundExecutor = true;
+        }
     }
 
-    private static class SafeguardAnnotatedTypeWrapper<X> implements AnnotatedType<X> {
+    void addMissingBeans(@Observes final AfterBeanDiscovery afterBeanDiscovery) {
+        final GeronimoFaultToleranceConfig config = GeronimoFaultToleranceConfig.create();
+        afterBeanDiscovery.addBean()
+                .id("geronimo_safeguard#configuration")
+                .types(GeronimoFaultToleranceConfig.class, Object.class)
+                .beanClass(GeronimoFaultToleranceConfig.class)
+                .qualifiers(Default.Literal.INSTANCE, Any.Literal.INSTANCE)
+                .createWith(c -> config);
 
-        private final AnnotatedType<X> delegate;
-        private final Set<Annotation> annotations;
-
-        private SafeguardAnnotatedTypeWrapper(AnnotatedType<X> delegate) {
-            this.delegate = delegate;
-            Set<Annotation> annotations = delegate.getAnnotations();
-            Set<Annotation> allAnotations = new LinkedHashSet<>();
-            allAnotations.add(INSTANCE);
-            allAnotations.addAll(annotations);
-            this.annotations = allAnotations;
+        if (!foundExecutor) {
+            afterBeanDiscovery.addBean()
+                    .id("geronimo_safeguard#executor")
+                    .types(Executor.class, Object.class)
+                    .beanClass(Executor.class)
+                    .qualifiers(Safeguard.Literal.INSTANCE, Any.Literal.INSTANCE)
+                    .createWith(c -> Executors.newCachedThreadPool())
+                    .destroyWith((e, c) -> ExecutorService.class.cast(e).shutdownNow());
         }
+    }
 
-        @Override
-        public Class<X> getJavaClass() {
-            return delegate.getJavaClass();
-        }
+    public Class<?> toClass(final Type it) {
+        return doToClass(it, 0);
+    }
 
-        @Override
-        public Set<AnnotatedConstructor<X>> getConstructors() {
-            return delegate.getConstructors();
+    private Class<?> doToClass(final Type it, final int iterations) {
+        if (Class.class.isInstance(it)) {
+            return Class.class.cast(it);
         }
-
-        @Override
-        public Set<AnnotatedMethod<? super X>> getMethods() {
-            return delegate.getMethods();
+        if (iterations > 100) { // with generic it happens we can loop here
+            return Object.class;
         }
-
-        @Override
-        public Set<AnnotatedField<? super X>> getFields() {
-            return delegate.getFields();
+        if (ParameterizedType.class.isInstance(it)) {
+            return doToClass(ParameterizedType.class.cast(it).getRawType(), iterations + 1);
         }
-
-        @Override
-        public Type getBaseType() {
-            return delegate.getBaseType();
-        }
-
-        @Override
-        public Set<Type> getTypeClosure() {
-            return delegate.getTypeClosure();
-        }
-
-        @Override
-        public <T extends Annotation> T getAnnotation(Class<T> annotationType) {
-            return SafeguardEnabled.class.equals(annotationType) ? (T) INSTANCE : delegate.getAnnotation(annotationType);
-        }
-
-        @Override
-        public Set<Annotation> getAnnotations() {
-            return Collections.unmodifiableSet(annotations);
-        }
-
-        @Override
-        public boolean isAnnotationPresent(Class<? extends Annotation> annotationType) {
-            return SafeguardEnabled.class.equals(annotationType) || delegate.isAnnotationPresent(annotationType);
-        }
+        return Object.class; // will not match any of our test
     }
 }

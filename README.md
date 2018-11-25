@@ -77,3 +77,9 @@ public class MyExecutionManagerProvider extends FailsafeExecutionManagerProvider
 
 
 ```
+
+## Dev tip
+
+To find the interceptor priority you can use this shell command:
+
+`find . -name *Interceptor.java | xargs grep '@Priority'  | sed 's/\([^:]*\):\(.*\)/\2 : \1/g' | sed 's/@Priority(Interceptor.Priority.PLATFORM_AFTER + \([0-9]*\))/priority = \1/' | sort`
