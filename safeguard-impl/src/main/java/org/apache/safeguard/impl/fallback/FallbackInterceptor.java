@@ -153,7 +153,7 @@ public class FallbackInterceptor implements Serializable {
                 try {
                     final Method fallbackMethod = context.getTarget()
                                                          .getClass()
-                                                         .getMethod(method);
+                                                         .getMethod(method, context.getMethod().getParameterTypes());
                     if (!extension.toClass(context.getMethod()
                                                   .getReturnType())
                                   .isAssignableFrom(extension.toClass(fallbackMethod.getReturnType())) || !Arrays.equals(
