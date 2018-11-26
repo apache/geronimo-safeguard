@@ -40,7 +40,7 @@ class MicroprofileMetricsImpl implements FaultToleranceMetrics {
     @Override
     public Counter counter(final String name, final String description) {
         final org.eclipse.microprofile.metrics.Counter delegate = registry.counter(
-                new Metadata(name, name, description, COUNTER, "none"));
+                reusable(new Metadata(name, name, description, COUNTER, "none")));
         return new Counter() {
             @Override
             public void inc() {
@@ -57,14 +57,19 @@ class MicroprofileMetricsImpl implements FaultToleranceMetrics {
     @Override
     public void gauge(final String name, final String description, final String unit,
                        final Supplier<Long> supplier) {
-        registry.register(new Metadata(name, name, description, GAUGE, unit),
+        registry.register(reusable(new Metadata(name, name, description, GAUGE, unit)),
                 (org.eclipse.microprofile.metrics.Gauge<Long>) supplier::get);
     }
 
     @Override
     public Histogram histogram(final String name, final String description) {
         final org.eclipse.microprofile.metrics.Histogram histogram = registry.histogram(
-                new Metadata(name, name, description, HISTOGRAM, "none"));
+                reusable(new Metadata(name, name, description, HISTOGRAM, "none")));
         return histogram::update;
+    }
+
+    private Metadata reusable(final Metadata metadata) {
+        metadata.setReusable(true);
+        return metadata;
     }
 }

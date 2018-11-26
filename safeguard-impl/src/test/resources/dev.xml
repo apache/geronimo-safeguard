@@ -19,12 +19,14 @@
 <suite name="Dev Manual Test Run" verbose="2" configfailurepolicy="continue" >
   <test name="Manual Run">
     <packages> <!-- all TCK -->
-      <!--<package name="org.eclipse.microprofile.fault.tolerance.tck" />-->
+      <!--
+      <package name="org.eclipse.microprofile.fault.tolerance.tck" />
+      -->
     </packages>
-    <classes> <!-- for dev you can filter them out -->
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.FallbackTest">
+    <classes>
+      <class name="org.eclipse.microprofile.fault.tolerance.tck.CircuitBreakerTest">
         <methods>
-          <include name="testClassLevelFallbackSuccess" />
+
         </methods>
       </class>
     </classes>
