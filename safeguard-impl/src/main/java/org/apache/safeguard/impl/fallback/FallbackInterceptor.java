@@ -43,6 +43,7 @@ import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
 import org.apache.safeguard.impl.cdi.SafeguardExtension;
+import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 import org.eclipse.microprofile.faulttolerance.ExecutionContext;
 import org.eclipse.microprofile.faulttolerance.Fallback;
@@ -107,6 +108,9 @@ public class FallbackInterceptor implements Serializable {
         @Inject
         private FaultToleranceMetrics metrics;
 
+        @Inject
+        private ConfigurationMapper mapper;
+
         private final Collection<CreationalContext<?>> contexts = new ArrayList<>();
 
         @PreDestroy
@@ -119,7 +123,7 @@ public class FallbackInterceptor implements Serializable {
         }
 
         public FallbackHandler<?> create(final InvocationContext context) {
-            final Fallback fallback = finder.findAnnotation(Fallback.class, context);
+            final Fallback fallback = mapper.map(finder.findAnnotation(Fallback.class, context), context.getMethod(), Fallback.class);
             final Class<? extends FallbackHandler<?>> value = fallback.value();
             final String method = fallback.fallbackMethod();
             if (!method.isEmpty() && value != Fallback.DEFAULT.class) {
@@ -128,9 +132,11 @@ public class FallbackInterceptor implements Serializable {
 
             FallbackHandler<?> handler;
             if (value != Fallback.DEFAULT.class) {
-                Stream.of(value.getInterfaces()).filter(it -> it == FallbackHandler.class)
+                Stream.of(value.getGenericInterfaces())
+                        .filter(ParameterizedType.class::isInstance)
+                        .map(ParameterizedType.class::cast)
+                        .filter(it -> FallbackHandler.class == it.getRawType())
                         .findFirst()
-                        .map(it -> ParameterizedType.class.cast(it))
                         .filter(it -> it.getActualTypeArguments().length == 1)
                         .map(it -> extension.toClass(context.getMethod().getReturnType()).isAssignableFrom(extension.toClass(it.getActualTypeArguments()[0])))
                         .orElseThrow(() -> new FaultToleranceDefinitionException("handler does not match method: " + context.getMethod()));

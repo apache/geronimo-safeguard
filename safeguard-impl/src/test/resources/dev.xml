@@ -19,23 +19,14 @@
 <suite name="Dev Manual Test Run" verbose="2" configfailurepolicy="continue" >
   <test name="Manual Run">
     <packages> <!-- all TCK -->
-      <package name="org.eclipse.microprofile.fault.tolerance.tck" />
+      <!--<package name="org.eclipse.microprofile.fault.tolerance.tck" />-->
     </packages>
     <classes> <!-- for dev you can filter them out -->
-      <!--
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.config.ConfigPropertyGlobalVsClassVsMethodTest">
-      </class>
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.metrics.RetryMetricTest">
+      <class name="org.eclipse.microprofile.fault.tolerance.tck.FallbackTest">
         <methods>
-          <include name="testRetryMetricUnsuccessful" />
+          <include name="testClassLevelFallbackSuccess" />
         </methods>
       </class>
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.bulkhead.BulkheadSynchRetryTest">
-        <methods>
-          <include name="testIgnoreWaitingTaskQueueBulkhead"/>
-        </methods>
-      </class>
-      -->
     </classes>
   </test>
 </suite>
