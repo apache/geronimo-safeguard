@@ -18,13 +18,22 @@
  */
 package org.apache.safeguard.impl.retry;
 
+import java.util.Map;
+
 import javax.annotation.Priority;
 import javax.interceptor.Interceptor;
 
+import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 import org.eclipse.microprofile.faulttolerance.Retry;
 
 @Retry
 @Interceptor
 @Priority(Interceptor.Priority.PLATFORM_AFTER)
 public class BeforeRetryInterceptor extends BaseRetryInterceptor {
+    @Override
+    protected void executeFinalCounterAction(final Map<String, Object> contextData,
+                                             final String counterActionKey,
+                                             final FaultToleranceMetrics.Counter counter) {
+        counter.inc();
+    }
 }

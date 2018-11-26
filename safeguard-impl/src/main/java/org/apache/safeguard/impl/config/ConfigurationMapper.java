@@ -49,8 +49,8 @@ public class ConfigurationMapper {
     private <T extends Annotation> Object findConfiguredValue(final T instance, final Class<T> api,
                                                               final Method sourceMethod,
                                                               final Method proxyMethod, final Object[] args) {
-        return ofNullable(ofNullable(findDefaultConfiguration(proxyMethod))
-                .orElseGet(() -> ofNullable(findMethodConfiguration(api, sourceMethod, proxyMethod))
+        return ofNullable(ofNullable(findMethodConfiguration(api, sourceMethod, proxyMethod))
+                .orElseGet(() -> ofNullable(findDefaultConfiguration(proxyMethod))
                         .orElseGet(() -> ofNullable(findClassConfiguration(api, sourceMethod, proxyMethod)).orElse(null))))
                 .map(v -> coerce(v, proxyMethod.getReturnType()))
                 .orElseGet(() -> {

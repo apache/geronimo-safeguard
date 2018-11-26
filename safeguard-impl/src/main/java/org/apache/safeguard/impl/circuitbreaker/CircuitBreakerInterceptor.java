@@ -23,6 +23,7 @@ import java.lang.reflect.Method;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -35,6 +36,7 @@ import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
 import org.apache.safeguard.impl.config.ConfigurationMapper;
+import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
 import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceDefinitionException;
@@ -58,14 +60,20 @@ public class CircuitBreakerInterceptor implements Serializable {
             }
         }
         if (!circuitBreaker.checkState()) {
+            circuitBreaker.callsPrevented.inc();
             throw new CircuitBreakerOpenException(context.getMethod() + " circuit breaker is open");
         }
         try {
-            return context.proceed();
+            final Object result = context.proceed();
+            circuitBreaker.callsSucceeded.inc();
+            return result;
         } catch (final Exception e) {
             if (circuitBreaker.failOn.length > 0 &&
                     Stream.of(circuitBreaker.failOn).anyMatch(it -> it.isInstance(e) || it.isInstance(e.getCause()))) {
+                circuitBreaker.callsFailed.inc();
                 circuitBreaker.incrementAndCheckState(1);
+            } else {
+                circuitBreaker.callsSucceeded.inc();
             }
             throw e;
         }
@@ -105,6 +113,9 @@ public class CircuitBreakerInterceptor implements Serializable {
         @Inject
         private ConfigurationMapper mapper;
 
+        @Inject
+        private FaultToleranceMetrics metrics;
+
         public Map<Method, CircuitBreakerImpl> getCircuitBreakers() {
             return circuitBreakers;
         }
@@ -133,7 +144,26 @@ public class CircuitBreakerInterceptor implements Serializable {
             if (successThreshold < 0) {
                 throw new FaultToleranceDefinitionException("CircuitBreaker success threshold can't be < 0");
             }
-            return new CircuitBreakerImpl(volumeThreshold, delay, successThreshold, delay, failOn, failureRatio);
+
+            final String metricsNameBase = "ft." + context.getMethod().getDeclaringClass().getCanonicalName() + "."
+                    + context.getMethod().getName() + ".circuitbreaker.";
+
+            final CircuitBreakerImpl circuitBreaker = new CircuitBreakerImpl(volumeThreshold, delay, successThreshold,
+                    delay, failOn, failureRatio, metrics.counter(metricsNameBase + "callsSucceeded.total",
+                    "Number of calls allowed to run by the circuit breaker that returned successfully"),
+                    metrics.counter(metricsNameBase + "callsFailed.total",
+                            "Number of calls allowed to run by the circuit breaker that then failed"),
+                    metrics.counter(metricsNameBase + "callsPrevented.total",
+                            "Number of calls prevented from running by an open circuit breaker"),
+                    metrics.counter(metricsNameBase + "opened.total",
+                            "Number of times the circuit breaker has moved from closed state to open state"));
+            metrics.gauge(metricsNameBase + "open.total", "Amount of time the circuit breaker has spent in open state", "nanoseconds",
+                    circuitBreaker.openDuration::get);
+            metrics.gauge(metricsNameBase + "halfOpen.total", "Amount of time the circuit breaker has spent in half-open state", "nanoseconds",
+                    circuitBreaker.halfOpenDuration::get);
+            metrics.gauge(metricsNameBase + "closed.total", "Amount of time the circuit breaker has spent in closed state", "nanoseconds",
+                    circuitBreaker.closedDuration::get);
+            return circuitBreaker;
         }
     }
 
@@ -150,10 +180,21 @@ public class CircuitBreakerInterceptor implements Serializable {
         private final double failureRatio;
         private final Class<? extends Throwable>[] failOn;
 
-        private CircuitBreakerImpl(final int openingThreshold, final long openingInterval,
-                                   final int closingThreshold, final long closingInterval,
-                                   final Class<? extends Throwable>[] failOn,
-                                   final double failureRatio) {
+        private final AtomicLong openDuration = new AtomicLong();
+        private final FaultToleranceMetrics.Counter callsSucceeded;
+        private final FaultToleranceMetrics.Counter callsFailed;
+        private final FaultToleranceMetrics.Counter callsPrevented;
+        private final AtomicLong halfOpenDuration = new AtomicLong();
+        private final AtomicLong closedDuration = new AtomicLong();
+        private final FaultToleranceMetrics.Counter opened;
+
+        CircuitBreakerImpl(final int openingThreshold, final long openingInterval, final int closingThreshold,
+                           final long closingInterval, final Class<? extends Throwable>[] failOn,
+                           final double failureRatio,
+                           final FaultToleranceMetrics.Counter callsSucceeded,
+                           final FaultToleranceMetrics.Counter callsFailed,
+                           final FaultToleranceMetrics.Counter callsPrevented,
+                           final FaultToleranceMetrics.Counter opened) {
             this.checkIntervalData = new AtomicReference<>(new CheckIntervalData(0, 0));
             this.openingThreshold = openingThreshold;
             this.openingInterval = openingInterval;
@@ -161,6 +202,10 @@ public class CircuitBreakerInterceptor implements Serializable {
             this.closingInterval = closingInterval;
             this.failOn = failOn;
             this.failureRatio = failureRatio;
+            this.callsSucceeded = callsSucceeded;
+            this.callsFailed = callsFailed;
+            this.callsPrevented = callsPrevented;
+            this.opened = opened;
         }
 
         protected static boolean isOpen(final State state) {
@@ -191,6 +236,9 @@ public class CircuitBreakerInterceptor implements Serializable {
             } while (!updateCheckIntervalData(currentData, nextData));
             if (stateStrategy(currentState).isStateTransition(this, currentData, nextData)) {
                 currentState = currentState.oppositeState();
+                if (currentState == State.OPEN) {
+                    opened.inc();
+                }
                 changeStateAndStartNewCheckInterval(currentState);
             }
             return !isOpen(currentState);
@@ -264,8 +312,12 @@ public class CircuitBreakerInterceptor implements Serializable {
             public boolean isStateTransition(final CircuitBreakerImpl breaker,
                                              final CheckIntervalData currentData, final CheckIntervalData nextData) {
                 final long now = now();
-                return nextData.eventCount > breaker.openingThreshold ||
-                        (now != currentData.checkIntervalStart && (currentData.eventCount / (now - currentData.checkIntervalStart)) > breaker.failureRatio);
+                final boolean result =
+                        nextData.eventCount >= breaker.openingThreshold || (now != currentData.checkIntervalStart && (currentData.eventCount / (now - currentData.checkIntervalStart)) > breaker.failureRatio);
+                if (!result) {
+                    breaker.closedDuration.set(now - currentData.checkIntervalStart);
+                }
+                return result;
             }
 
             @Override
@@ -278,8 +330,12 @@ public class CircuitBreakerInterceptor implements Serializable {
             @Override
             public boolean isStateTransition(final CircuitBreakerImpl breaker,
                                              final CheckIntervalData currentData, final CheckIntervalData nextData) {
-                return nextData.checkIntervalStart != currentData.checkIntervalStart
-                        && currentData.eventCount < breaker.closingThreshold;
+                final boolean result =
+                        nextData.checkIntervalStart != currentData.checkIntervalStart && currentData.eventCount <= breaker.closingThreshold;
+                if (!result) {
+                    breaker.openDuration.set(now() - currentData.checkIntervalStart);
+                }
+                return result;
             }
 
             @Override

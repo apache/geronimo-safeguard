@@ -1,22 +1,38 @@
 package org.apache.safeguard.impl.cdi;
 
+import static java.util.stream.Collectors.toList;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Stream;
 
+import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.event.Observes;
 import javax.enterprise.inject.Any;
 import javax.enterprise.inject.Default;
 import javax.enterprise.inject.spi.AfterBeanDiscovery;
+import javax.enterprise.inject.spi.AnnotatedMethod;
 import javax.enterprise.inject.spi.Extension;
 import javax.enterprise.inject.spi.ProcessAnnotatedType;
 import javax.enterprise.inject.spi.ProcessBean;
+import javax.enterprise.inject.spi.WithAnnotations;
 
 import org.apache.safeguard.impl.config.GeronimoFaultToleranceConfig;
 import org.apache.safeguard.impl.customizable.Safeguard;
 import org.apache.safeguard.impl.fallback.FallbackInterceptor;
+import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
+import org.eclipse.microprofile.faulttolerance.Asynchronous;
+import org.eclipse.microprofile.faulttolerance.Bulkhead;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Fallback;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 
 // todo: mp.fault.tolerance.interceptor.priority handling
 public class SafeguardExtension implements Extension {
@@ -24,6 +40,26 @@ public class SafeguardExtension implements Extension {
 
     void addFallbackInterceptor(@Observes final ProcessAnnotatedType<FallbackInterceptor> processAnnotatedType) {
         processAnnotatedType.configureAnnotatedType().add(new FallbackBinding());
+    }
+
+    void activateSafeguard(@Observes @WithAnnotations({
+            /*Asynchronous.class, */
+            Bulkhead.class, CircuitBreaker.class,
+            Fallback.class, Retry.class, Timeout.class
+    }) final ProcessAnnotatedType<?> processAnnotatedType) {
+        if (processAnnotatedType.getAnnotatedType().getJavaClass().getName().startsWith("org.apache.safeguard.impl")) {
+            return;
+        }
+        if (faultToleranceAnnotations().anyMatch(it -> processAnnotatedType.getAnnotatedType().isAnnotationPresent(it))) {
+            processAnnotatedType.configureAnnotatedType().add(SafeguardEnabled.Literal.INSTANCE);
+        } else {
+            final List<Method> methods = processAnnotatedType.getAnnotatedType().getMethods().stream()
+                    .filter(it -> faultToleranceAnnotations().anyMatch(it::isAnnotationPresent))
+                    .map(AnnotatedMethod::getJavaMember).collect(toList());
+            processAnnotatedType.configureAnnotatedType()
+                    .filterMethods(it -> methods.contains(it.getJavaMember()))
+                    .forEach(m -> m.add(SafeguardEnabled.Literal.INSTANCE));
+        }
     }
 
     void onBean(@Observes final ProcessBean<?> bean) {
@@ -40,7 +76,16 @@ public class SafeguardExtension implements Extension {
                 .types(GeronimoFaultToleranceConfig.class, Object.class)
                 .beanClass(GeronimoFaultToleranceConfig.class)
                 .qualifiers(Default.Literal.INSTANCE, Any.Literal.INSTANCE)
+                .scope(ApplicationScoped.class)
                 .createWith(c -> config);
+
+        afterBeanDiscovery.addBean()
+                .id("geronimo_safeguard#metrics")
+                .types(FaultToleranceMetrics.class, Object.class)
+                .beanClass(FaultToleranceMetrics.class)
+                .qualifiers(Default.Literal.INSTANCE, Any.Literal.INSTANCE)
+                .scope(ApplicationScoped.class)
+                .createWith(c -> FaultToleranceMetrics.create());
 
         if (!foundExecutor) {
             afterBeanDiscovery.addBean()
@@ -49,6 +94,7 @@ public class SafeguardExtension implements Extension {
                     .beanClass(Executor.class)
                     .qualifiers(Safeguard.Literal.INSTANCE, Any.Literal.INSTANCE)
                     .createWith(c -> Executors.newCachedThreadPool())
+                    .scope(ApplicationScoped.class)
                     .destroyWith((e, c) -> ExecutorService.class.cast(e).shutdownNow());
         }
     }
@@ -68,5 +114,10 @@ public class SafeguardExtension implements Extension {
             return doToClass(ParameterizedType.class.cast(it).getRawType(), iterations + 1);
         }
         return Object.class; // will not match any of our test
+    }
+
+    private Stream<Class<? extends Annotation>> faultToleranceAnnotations() {
+        return Stream.of(Asynchronous.class, Bulkhead.class, CircuitBreaker.class,
+                Fallback.class, Retry.class, Timeout.class);
     }
 }

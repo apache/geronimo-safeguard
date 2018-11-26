@@ -25,10 +25,10 @@ import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 
+import javax.annotation.PreDestroy;
 import javax.annotation.Priority;
 import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
@@ -38,11 +38,13 @@ import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
 import org.apache.safeguard.impl.asynchronous.BaseAsynchronousInterceptor;
+import org.apache.safeguard.impl.interceptor.IdGeneratorInterceptor;
 import org.eclipse.microprofile.faulttolerance.Asynchronous;
 import org.eclipse.microprofile.faulttolerance.Bulkhead;
 import org.eclipse.microprofile.faulttolerance.exceptions.BulkheadException;
 import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceDefinitionException;
 
+// todo: metrics
 @Bulkhead
 @Interceptor
 @Priority(Interceptor.Priority.PLATFORM_AFTER + 5)
@@ -64,7 +66,8 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
             }
         }
         if (model.useThreads) {
-            context.getContextData().put(EXECUTOR_KEY, model.pool);
+            context.getContextData().put(
+                    EXECUTOR_KEY + context.getContextData().get(IdGeneratorInterceptor.class.getName()), model.pool);
             return around(context);
         } else {
             if (!model.semaphore.tryAcquire()) {
@@ -80,14 +83,15 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
 
     @Override
     protected Executor getExecutor(final InvocationContext context) {
-        return Executor.class.cast(context.getContextData().get(EXECUTOR_KEY));
+        return Executor.class.cast(context.getContextData()
+                  .get(EXECUTOR_KEY + context.getContextData().get(IdGeneratorInterceptor.class.getName())));
     }
 
     static class Model {
         private final int value;
         private final int waitingQueue;
         private final boolean useThreads;
-        private final ExecutorService pool;
+        private final ThreadPoolExecutor pool;
         private final Semaphore semaphore;
 
         private Model(final Bulkhead bulkhead, final boolean useThreads) {
@@ -104,6 +108,9 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
             this.useThreads = useThreads;
             if (this.useThreads) {
                 this.pool = new ThreadPoolExecutor(value, value, 0L, MILLISECONDS, new ArrayBlockingQueue<>(waitingQueue));
+                this.pool.setRejectedExecutionHandler((r, executor) -> {
+                    throw new BulkheadException("Can't accept task " + r);
+                });
                 this.semaphore = null;
             } else {
                 this.pool = null;
@@ -118,6 +125,11 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
 
         @Inject
         private AnnotationFinder finder;
+
+        @PreDestroy
+        private void destroy() {
+            models.values().stream().filter(m -> m.pool != null).forEach(m -> m.pool.shutdownNow());
+        }
 
         public Map<Method, Model> getModels() {
             return models;

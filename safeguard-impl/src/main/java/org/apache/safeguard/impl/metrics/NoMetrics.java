@@ -18,53 +18,37 @@
  */
 package org.apache.safeguard.impl.metrics;
 
-import static org.eclipse.microprofile.metrics.MetricType.COUNTER;
-import static org.eclipse.microprofile.metrics.MetricType.GAUGE;
-import static org.eclipse.microprofile.metrics.MetricType.HISTOGRAM;
-
 import java.util.function.Supplier;
 
 import javax.enterprise.inject.Vetoed;
 
-import org.eclipse.microprofile.metrics.Metadata;
-import org.eclipse.microprofile.metrics.MetricRegistry;
-
 @Vetoed
-class MicroprofileMetricsImpl implements FaultToleranceMetrics {
-    private final MetricRegistry registry;
-
-    MicroprofileMetricsImpl(final MetricRegistry registry) {
-        this.registry = registry;
-    }
-
+class NoMetrics implements FaultToleranceMetrics {
     @Override
     public Counter counter(final String name, final String description) {
-        final org.eclipse.microprofile.metrics.Counter delegate = registry.counter(
-                new Metadata(name, name, description, COUNTER, "none"));
         return new Counter() {
             @Override
             public void inc() {
-                delegate.inc();
+                // no-op
             }
 
             @Override
             public void dec() {
-                delegate.dec();
+                // no-op
             }
         };
     }
 
     @Override
     public void gauge(final String name, final String description, final String unit,
-                       final Supplier<Long> supplier) {
-        registry.register(new Metadata(name, name, description, GAUGE, unit),
-                (org.eclipse.microprofile.metrics.Gauge<Long>) supplier::get);
+                      final Supplier<Long> supplier) {
+        // no-op
     }
 
     @Override
     public Histogram histogram(final String name, final String description) {
-        final org.eclipse.microprofile.metrics.Histogram histogram = registry.histogram(
-                new Metadata(name, name, description, HISTOGRAM, "none"));
-        return histogram::update;
+        return value -> {
+            // no-op
+        };
     }
 }

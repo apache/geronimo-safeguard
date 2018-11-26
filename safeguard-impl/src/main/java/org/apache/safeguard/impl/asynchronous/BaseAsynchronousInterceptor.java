@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.interceptor.AroundInvoke;
 import javax.interceptor.InvocationContext;
 
+import org.apache.safeguard.impl.interceptor.IdGeneratorInterceptor;
 import org.eclipse.microprofile.faulttolerance.Asynchronous;
 import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceDefinitionException;
 
@@ -39,11 +40,13 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
     protected abstract Executor getExecutor(InvocationContext context);
 
     protected Object around(final InvocationContext context) throws Exception {
-        if (context.getContextData().get(Asynchronous.class.getName()) != null) { // bulkhead or so handling threading
+        final String key = Asynchronous.class.getName() +
+                context.getContextData().get(IdGeneratorInterceptor.class.getName());
+        if (context.getContextData().get(key) != null) { // bulkhead or so handling threading
             return context.proceed();
         }
 
-        context.getContextData().put(Asynchronous.class.getName(), "true");
+        context.getContextData().put(key, "true");
 
         final Class<?> returnType = context.getMethod().getReturnType();
         if (CompletionStage.class.isAssignableFrom(returnType)) {

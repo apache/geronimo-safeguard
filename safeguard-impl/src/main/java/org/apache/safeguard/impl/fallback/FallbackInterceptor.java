@@ -43,6 +43,7 @@ import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
 import org.apache.safeguard.impl.cdi.SafeguardExtension;
+import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 import org.eclipse.microprofile.faulttolerance.ExecutionContext;
 import org.eclipse.microprofile.faulttolerance.Fallback;
 import org.eclipse.microprofile.faulttolerance.FallbackHandler;
@@ -103,6 +104,9 @@ public class FallbackInterceptor implements Serializable {
         @Inject
         private BeanManager beanManager;
 
+        @Inject
+        private FaultToleranceMetrics metrics;
+
         private final Collection<CreationalContext<?>> contexts = new ArrayList<>();
 
         @PreDestroy
@@ -121,6 +125,8 @@ public class FallbackInterceptor implements Serializable {
             if (!method.isEmpty() && value != Fallback.DEFAULT.class) {
                 throw new FaultToleranceDefinitionException("You can't set a method and handler as fallback on " + context.getMethod());
             }
+
+            FallbackHandler<?> handler;
             if (value != Fallback.DEFAULT.class) {
                 Stream.of(value.getInterfaces()).filter(it -> it == FallbackHandler.class)
                         .findFirst()
@@ -134,29 +140,48 @@ public class FallbackInterceptor implements Serializable {
                 if (!beanManager.isNormalScope(handlerBean.getScope())) {
                     contexts.add(creationalContext);
                 }
-                return FallbackHandler.class.cast(beanManager.getReference(handlerBean, FallbackHandler.class, creationalContext));
-            }
-            try {
-                final Method fallbackMethod = context.getTarget().getClass().getMethod(method);
-                if (!extension.toClass(context.getMethod().getReturnType()).isAssignableFrom(extension.toClass(fallbackMethod.getReturnType())) ||
-                        !Arrays.equals(context.getMethod().getParameterTypes(), fallbackMethod.getParameterTypes())) {
-                    throw new FaultToleranceDefinitionException("handler method does not match method: " + context.getMethod());
-                }
-                if (!fallbackMethod.isAccessible()) {
-                    fallbackMethod.setAccessible(true);
-                }
-                return (FallbackHandler<Object>) context1 -> {
-                    try {
-                        return fallbackMethod.invoke(EnrichedExecutionContext.class.cast(context1).getTarget(), context1.getParameters());
-                    } catch (final IllegalAccessException e) {
-                        throw new IllegalStateException(e);
-                    } catch (final InvocationTargetException e) {
-                        throw new IllegalStateException(e.getTargetException());
+                final FallbackHandler fallbackHandler = FallbackHandler.class.cast(
+                        beanManager.getReference(handlerBean, FallbackHandler.class, creationalContext));
+                handler = fallbackHandler;
+            } else {
+                try {
+                    final Method fallbackMethod = context.getTarget()
+                                                         .getClass()
+                                                         .getMethod(method);
+                    if (!extension.toClass(context.getMethod()
+                                                  .getReturnType())
+                                  .isAssignableFrom(extension.toClass(fallbackMethod.getReturnType())) || !Arrays.equals(
+                            context.getMethod()
+                                   .getParameterTypes(), fallbackMethod.getParameterTypes())) {
+                        throw new FaultToleranceDefinitionException("handler method does not match method: " + context.getMethod());
                     }
-                };
-            } catch (final NoSuchMethodException e) {
-                throw new FaultToleranceDefinitionException("No method " + method + " in " + context.getTarget());
+                    if (!fallbackMethod.isAccessible()) {
+                        fallbackMethod.setAccessible(true);
+                    }
+                    handler = (FallbackHandler<Object>) context1 -> {
+                        try {
+                            return fallbackMethod.invoke(EnrichedExecutionContext.class.cast(context1)
+                                                                                       .getTarget(),
+                                    context1.getParameters());
+                        } catch (final IllegalAccessException e) {
+                            throw new IllegalStateException(e);
+                        } catch (final InvocationTargetException e) {
+                            throw new IllegalStateException(e.getTargetException());
+                        }
+                    };
+                } catch (final NoSuchMethodException e) {
+                    throw new FaultToleranceDefinitionException("No method " + method + " in " + context.getTarget());
+                }
             }
+
+            final String metricsName = "ft." + context.getMethod().getDeclaringClass().getCanonicalName() + "."
+                    + context.getMethod().getName() + ".fallback.calls.total";
+            final FaultToleranceMetrics.Counter counter = metrics.counter(metricsName,
+                    "Number of times the fallback handler or method was called");
+            return (FallbackHandler<Object>) context12 -> {
+                counter.inc();
+                return handler.handle(context12);
+            };
         }
     }
 

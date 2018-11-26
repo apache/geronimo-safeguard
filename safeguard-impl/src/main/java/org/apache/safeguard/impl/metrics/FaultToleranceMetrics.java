@@ -23,16 +23,27 @@ import static java.util.Optional.ofNullable;
 
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.function.Supplier;
 import java.util.stream.StreamSupport;
 
 import javax.annotation.Priority;
 import javax.enterprise.inject.spi.CDI;
 
-// todo
 public interface FaultToleranceMetrics {
+    Counter counter(String name, String description);
+    void gauge(String name, String description, String unit, Supplier<Long> supplier);
+    Histogram histogram(String name, String description);
 
-    void inc(String value);
-    void dec(String value);
+
+    interface Histogram {
+        void update(long duration);
+    }
+    interface Counter {
+        void inc();
+        void dec();
+    }
+    interface Gauge extends Supplier<Long> {
+    }
 
     static FaultToleranceMetrics create() {
         try {
@@ -46,17 +57,7 @@ public interface FaultToleranceMetrics {
         } catch (final Exception e) {
             // no-op
         }
-        return new FaultToleranceMetrics() {
-            @Override
-            public void inc(final String value) {
-                // no-op
-            }
-
-            @Override
-            public void dec(final String value) {
-                // no-op
-            }
-        };
+        return new NoMetrics();
     }
 }
 

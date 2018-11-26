@@ -38,6 +38,7 @@ import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
 import org.apache.safeguard.impl.customizable.Safeguard;
+import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceDefinitionException;
 
@@ -54,22 +55,29 @@ public class TimeoutInterceptor implements Serializable {
 
     @AroundInvoke
     public Object withTimeout(final InvocationContext context) throws Exception {
-        final Map<Method, Long> timeouts = cache.getTimeouts();
-        Long duration = timeouts.get(context.getMethod());
-        if (duration == null) {
-            duration = cache.create(context);
-            timeouts.putIfAbsent(context.getMethod(), duration);
+        final Map<Method, Model> timeouts = cache.getTimeouts();
+        Model model = timeouts.get(context.getMethod());
+        if (model == null) {
+            model = cache.create(context);
+            timeouts.putIfAbsent(context.getMethod(), model);
         }
         final FutureTask<Object> task = new FutureTask<>(context::proceed);
+        final long start = System.nanoTime();
         executor.execute(task);
         try {
-            return task.get(duration, NANOSECONDS);
+            final Object result = task.get(model.timeout, NANOSECONDS);
+            model.successes.inc();
+            return result;
         } catch (final ExecutionException ee) {
             cancel(task);
             throw toCause(ee);
         } catch (final TimeoutException te) {
+            model.timeouts.inc();
             cancel(task);
             throw new org.eclipse.microprofile.faulttolerance.exceptions.TimeoutException(te);
+        } finally {
+            final long end = System.nanoTime();
+            model.executionDuration.update(end - start);
         }
     }
 
@@ -90,23 +98,47 @@ public class TimeoutInterceptor implements Serializable {
         throw te;
     }
 
+    private static class Model {
+        private final long timeout;
+        private final FaultToleranceMetrics.Histogram executionDuration;
+        private final FaultToleranceMetrics.Counter timeouts;
+        private final FaultToleranceMetrics.Counter successes;
+
+        private Model(final long timeout, final FaultToleranceMetrics.Histogram executionDuration,
+                      final FaultToleranceMetrics.Counter timeouts, final FaultToleranceMetrics.Counter successes) {
+            this.timeout = timeout;
+            this.executionDuration = executionDuration;
+            this.timeouts = timeouts;
+            this.successes = successes;
+        }
+    }
+
     @ApplicationScoped
     public static class Cache {
-        private final Map<Method, Long> timeouts = new ConcurrentHashMap<>();
+        private final Map<Method, Model> timeouts = new ConcurrentHashMap<>();
 
         @Inject
         private AnnotationFinder finder;
 
-        public Map<Method, Long> getTimeouts() {
+        @Inject
+        private FaultToleranceMetrics metrics;
+
+        public Map<Method, Model> getTimeouts() {
             return timeouts;
         }
 
-        public long create(final InvocationContext context) {
+        public Model create(final InvocationContext context) {
             final Timeout timeout = finder.findAnnotation(Timeout.class, context);
             if (timeout.value() < 0) {
                 throw new FaultToleranceDefinitionException("Timeout can't be < 0: " + context.getMethod());
             }
-            return timeout.unit().getDuration().toNanos() * timeout.value();
+            final String metricsNameBase = "ft." + context.getMethod().getDeclaringClass().getCanonicalName() + "." +
+                    context.getMethod().getName() + ".timeout.";
+            return new Model(
+                    timeout.unit().getDuration().toNanos() * timeout.value(),
+                    metrics.histogram(metricsNameBase + "executionDuration", "Histogram of execution times for the method"),
+                    metrics.counter(metricsNameBase + "callsTimedOut.total", "The number of times the method timed out"),
+                    metrics.counter(metricsNameBase + "callsNotTimedOut.total", "The number of times the method completed without timing out"));
         }
     }
 }

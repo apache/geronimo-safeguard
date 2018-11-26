@@ -16,24 +16,25 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
-package org.apache.safeguard.impl.retry;
+package org.apache.safeguard.impl.cdi;
 
-import java.util.Map;
+import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.ElementType.TYPE;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
-import javax.annotation.Priority;
-import javax.interceptor.Interceptor;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
 
-import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
-import org.eclipse.microprofile.faulttolerance.Retry;
+import javax.enterprise.util.AnnotationLiteral;
+import javax.interceptor.InterceptorBinding;
 
-@Retry
-@Interceptor
-@Priority(Interceptor.Priority.PLATFORM_AFTER + 10)
-public class AfterRetryInterceptor extends BaseRetryInterceptor {
-    @Override
-    protected void executeFinalCounterAction(final Map<String, Object> contextData, final String counterActionKey,
-                                             final FaultToleranceMetrics.Counter counter) {
-        // can be used to push it back to the before interceptor:
-        // contextData.put(counterActionKey, (Runnable) counter::inc);
+@InterceptorBinding
+@Target({TYPE, METHOD})
+@Retention(RUNTIME)
+public @interface SafeguardEnabled {
+    class Literal extends AnnotationLiteral<SafeguardEnabled> implements SafeguardEnabled {
+        public static final SafeguardEnabled.Literal INSTANCE = new SafeguardEnabled.Literal();
+
+        private static final long serialVersionUID = 1L;
     }
 }
