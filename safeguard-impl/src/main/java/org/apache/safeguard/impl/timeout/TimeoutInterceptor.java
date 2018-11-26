@@ -37,6 +37,7 @@ import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
+import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.customizable.Safeguard;
 import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 import org.eclipse.microprofile.faulttolerance.Timeout;
@@ -123,12 +124,15 @@ public class TimeoutInterceptor implements Serializable {
         @Inject
         private FaultToleranceMetrics metrics;
 
+        @Inject
+        private ConfigurationMapper mapper;
+
         public Map<Method, Model> getTimeouts() {
             return timeouts;
         }
 
         public Model create(final InvocationContext context) {
-            final Timeout timeout = finder.findAnnotation(Timeout.class, context);
+            final Timeout timeout = mapper.map(finder.findAnnotation(Timeout.class, context), context.getMethod(), Timeout.class);
             if (timeout.value() < 0) {
                 throw new FaultToleranceDefinitionException("Timeout can't be < 0: " + context.getMethod());
             }

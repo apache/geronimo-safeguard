@@ -18,7 +18,10 @@
 <!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd" >
 <suite name="Dev Manual Test Run" verbose="2" configfailurepolicy="continue" >
   <test name="Manual Run">
-    <classes>
+    <packages> <!-- all TCK -->
+      <package name="org.eclipse.microprofile.fault.tolerance.tck" />
+    </packages>
+    <classes> <!-- for dev you can filter them out -->
       <!--
       <class name="org.eclipse.microprofile.fault.tolerance.tck.config.ConfigPropertyGlobalVsClassVsMethodTest">
       </class>
