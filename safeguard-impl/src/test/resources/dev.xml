@@ -25,13 +25,9 @@
     </packages>
     -->
     <classes>
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.visibility.retry.RetryVisibilityTest">
-        <methods>
-
-        </methods>
-      </class>
       <!--
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.metrics.CircuitBreakerMetricTest" />
+      <class name="org.eclipse.microprofile.fault.tolerance.tck.config.ConfigPropertyGlobalVsClassVsMethodTest" />
+      <class name="org.eclipse.microprofile.fault.tolerance.tck.visibility.retry.RetryVisibilityTest" />
       -->
     </classes>
   </test>

@@ -60,6 +60,8 @@ public class CircuitBreakerInterceptor implements Serializable {
             final CircuitBreakerImpl existing = circuitBreakers.putIfAbsent(key, circuitBreaker);
             if (existing != null) {
                 circuitBreaker = existing;
+            } else {
+                cache.postCreate(circuitBreaker, context);
             }
         }
         if (circuitBreaker.disabled) {
@@ -76,6 +78,7 @@ public class CircuitBreakerInterceptor implements Serializable {
             if (state != CheckResult.CLOSED_CHANGED) { // a change triggers a reset we want to preserve
                 circuitBreaker.onSuccess();
             }
+            circuitBreaker.callsSucceeded.inc();
             return result;
         } catch (final Exception e) {
             if (circuitBreaker.failOn.length > 0 &&
@@ -106,8 +109,8 @@ public class CircuitBreakerInterceptor implements Serializable {
                                            final CheckIntervalData nextData) {
                 final long now = now();
                 final double currentFailureRatio = getCurrentFailureRatio(nextData);
+                breaker.closedDuration.set(now - currentData.checkIntervalStart);
                 if (nextData.states.length >= breaker.volumeThreshold && currentFailureRatio >= breaker.failureRatio) {
-                    breaker.closedDuration.set(now - currentData.checkIntervalStart);
                     breaker.opened.inc();
                     return OPEN;
                 }
@@ -124,13 +127,13 @@ public class CircuitBreakerInterceptor implements Serializable {
             public State isStateTransition(final CircuitBreakerImpl breaker,
                                            final CheckIntervalData currentData,
                                            final CheckIntervalData nextData) {
+                breaker.halfOpenDuration.set(now() - currentData.checkIntervalStart);
                 if (Stream.of(nextData.states).anyMatch(it -> !it)) { // a exception was thrown
                     return OPEN;
                 }
 
                 final long successes = Stream.of(nextData.states).filter(it -> it).count();
                 if (successes == nextData.states.length && successes >= breaker.successThreshold) {
-                    breaker.halfOpenDuration.set(now() - currentData.checkIntervalStart);
                     return CLOSED;
                 }
                 return this;
@@ -141,12 +144,11 @@ public class CircuitBreakerInterceptor implements Serializable {
             public State isStateTransition(final CircuitBreakerImpl breaker,
                                            final CheckIntervalData currentData,
                                            final CheckIntervalData nextData) {
+                breaker.openDuration.set(now() - currentData.checkIntervalStart);
                 if (nextData.checkIntervalStart != currentData.checkIntervalStart) {
-                    breaker.openDuration.set(now() - currentData.checkIntervalStart);
                     return breaker.successThreshold == 1 ? CLOSED : HALF_OPEN;
                 }
                 if (Stream.of(nextData.states).filter(it -> it).count() > breaker.successThreshold) {
-                    breaker.openDuration.set(now() - currentData.checkIntervalStart);
                     return breaker.successThreshold == 1 ? CLOSED : HALF_OPEN;
                 }
                 return this;
@@ -213,10 +215,8 @@ public class CircuitBreakerInterceptor implements Serializable {
                 throw new FaultToleranceDefinitionException("CircuitBreaker success threshold can't be <= 0");
             }
 
-            final String metricsNameBase = "ft." + context.getMethod().getDeclaringClass().getCanonicalName() + "."
-                    + context.getMethod().getName() + ".circuitbreaker.";
-
-            final CircuitBreakerImpl circuitBreaker = new CircuitBreakerImpl(
+            final String metricsNameBase = getBaseMetricsName(context);
+            return new CircuitBreakerImpl(
                     !mapper.isEnabled(context.getMethod(), CircuitBreaker.class),
                     volumeThreshold, delay, successThreshold,
                     failOn, failureRatio, metrics.counter(metricsNameBase + "callsSucceeded.total",
@@ -227,13 +227,21 @@ public class CircuitBreakerInterceptor implements Serializable {
                             "Number of calls prevented from running by an open circuit breaker"),
                     metrics.counter(metricsNameBase + "opened.total",
                             "Number of times the circuit breaker has moved from closed state to open state"));
+        }
+
+        private String getBaseMetricsName(final InvocationContext context) {
+            return "ft." + context.getMethod().getDeclaringClass().getCanonicalName() + "."
+                    + context.getMethod().getName() + ".circuitbreaker.";
+        }
+
+        public void postCreate(final CircuitBreakerImpl circuitBreaker, final InvocationContext context) {
+            final String metricsNameBase = getBaseMetricsName(context);
             metrics.gauge(metricsNameBase + "open.total", "Amount of time the circuit breaker has spent in open state", "nanoseconds",
                     circuitBreaker.openDuration::get);
             metrics.gauge(metricsNameBase + "halfOpen.total", "Amount of time the circuit breaker has spent in half-open state", "nanoseconds",
                     circuitBreaker.halfOpenDuration::get);
             metrics.gauge(metricsNameBase + "closed.total", "Amount of time the circuit breaker has spent in closed state", "nanoseconds",
                     circuitBreaker.closedDuration::get);
-            return circuitBreaker;
         }
     }
 
@@ -285,7 +293,6 @@ public class CircuitBreakerInterceptor implements Serializable {
 
         private void onSuccess() {
             performStateCheck(CheckType.SUCCESS);
-            callsSucceeded.inc();
         }
 
         private void onFailure() {
