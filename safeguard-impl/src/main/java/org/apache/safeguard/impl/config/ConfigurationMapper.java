@@ -26,15 +26,21 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.stream.Stream;
 
 import javax.enterprise.context.ApplicationScoped;
+import javax.enterprise.inject.spi.AnnotatedType;
+import javax.enterprise.inject.spi.BeanManager;
 import javax.inject.Inject;
 
 @ApplicationScoped
 public class ConfigurationMapper {
     @Inject
     private GeronimoFaultToleranceConfig config;
+
+    @Inject
+    private BeanManager beanManager;
 
     public <T extends Annotation> T map(final T instance, final Method sourceMethod, final Class<T> api) {
         return api.cast(Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
@@ -49,19 +55,35 @@ public class ConfigurationMapper {
     private <T extends Annotation> Object findConfiguredValue(final T instance, final Class<T> api,
                                                               final Method sourceMethod,
                                                               final Method proxyMethod, final Object[] args) {
-        return ofNullable(ofNullable(findMethodConfiguration(api, sourceMethod, proxyMethod))
-                .orElseGet(() -> ofNullable(findDefaultConfiguration(proxyMethod))
-                        .orElseGet(() -> ofNullable(findClassConfiguration(api, sourceMethod, proxyMethod)).orElse(null))))
+        final AnnotatedType<?> selected = beanManager.createAnnotatedType(sourceMethod.getDeclaringClass());
+        final boolean methodLevel = selected.getMethods().stream()
+                .filter(it -> it.getJavaMember().getName().equals(sourceMethod.getName()) &&
+                        Arrays.equals(it.getJavaMember().getParameterTypes(), sourceMethod.getParameterTypes()))
+                .anyMatch(it -> it.isAnnotationPresent(api));
+        if (methodLevel) {
+            return ofNullable(findDefaultConfiguration(proxyMethod))
+                    .map(v -> coerce(v, proxyMethod.getReturnType()))
+                    .orElseGet(() -> ofNullable(findMethodConfiguration(api, sourceMethod, proxyMethod))
+                            .map(v -> coerce(v, proxyMethod.getReturnType()))
+                            .orElseGet(() -> getReflectionConfig(instance, proxyMethod, args)));
+        }
+        return ofNullable(findDefaultConfiguration(proxyMethod))
                 .map(v -> coerce(v, proxyMethod.getReturnType()))
-                .orElseGet(() -> {
-                    try {
-                        return proxyMethod.invoke(instance, args);
-                    } catch (final IllegalAccessException e) {
-                        throw new IllegalStateException(e);
-                    } catch (final InvocationTargetException e) {
-                        throw new IllegalStateException(e.getTargetException());
-                    }
-                });
+                .orElseGet(() -> ofNullable(findClassConfiguration(api, sourceMethod, proxyMethod))
+                    .map(v -> coerce(v, proxyMethod.getReturnType()))
+                    .orElseGet(() -> getReflectionConfig(instance, proxyMethod, args)));
+    }
+
+    private <T extends Annotation> Object getReflectionConfig(final T instance,
+                                                              final Method proxyMethod,
+                                                              final Object[] args) {
+        try {
+            return proxyMethod.invoke(instance, args);
+        } catch (final IllegalAccessException e) {
+            throw new IllegalStateException(e);
+        } catch (final InvocationTargetException e) {
+            throw new IllegalStateException(e.getTargetException());
+        }
     }
 
     private String findDefaultConfiguration(final Method api) {

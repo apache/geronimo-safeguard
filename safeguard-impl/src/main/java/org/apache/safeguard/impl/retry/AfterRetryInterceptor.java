@@ -31,7 +31,7 @@ import org.eclipse.microprofile.faulttolerance.Retry;
 @Priority(Interceptor.Priority.PLATFORM_AFTER + 10)
 public class AfterRetryInterceptor extends BaseRetryInterceptor {
     @Override
-    protected void executeFinalCounterAction(final Map<String, Object> contextData, final String counterActionKey,
+    protected void executeFinalCounterAction(final Map<String, Object> contextData,
                                              final FaultToleranceMetrics.Counter counter) {
         // can be used to push it back to the before interceptor:
         // contextData.put(counterActionKey, (Runnable) counter::inc);

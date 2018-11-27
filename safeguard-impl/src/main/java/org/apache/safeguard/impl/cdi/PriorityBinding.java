@@ -16,23 +16,20 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
-package org.apache.safeguard.impl.retry;
-
-import java.util.Map;
+package org.apache.safeguard.impl.cdi;
 
 import javax.annotation.Priority;
-import javax.interceptor.Interceptor;
+import javax.enterprise.util.AnnotationLiteral;
 
-import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
-import org.eclipse.microprofile.faulttolerance.Retry;
+public class PriorityBinding extends AnnotationLiteral<Priority> implements Priority {
+    private final int value;
 
-@Retry
-@Interceptor
-@Priority(Interceptor.Priority.PLATFORM_AFTER)
-public class BeforeRetryInterceptor extends BaseRetryInterceptor {
+    public PriorityBinding(final int value) {
+        this.value = value;
+    }
+
     @Override
-    protected void executeFinalCounterAction(final Map<String, Object> contextData,
-                                             final FaultToleranceMetrics.Counter counter) {
-        counter.inc();
+    public int value() {
+        return value;
     }
 }

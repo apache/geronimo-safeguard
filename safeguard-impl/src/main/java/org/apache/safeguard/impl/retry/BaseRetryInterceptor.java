@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -40,6 +39,7 @@ import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.interceptor.IdGeneratorInterceptor;
 import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
 import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceException;
 
 public abstract class BaseRetryInterceptor implements Serializable {
@@ -57,31 +57,31 @@ public abstract class BaseRetryInterceptor implements Serializable {
         }
 
         final Map<String, Object> contextData = context.getContextData();
-        final String counterKey = BaseRetryInterceptor.class.getName() + ".counter_"
+        final String contextKey = BaseRetryInterceptor.class.getName() + ".context_"
                 + contextData.get(IdGeneratorInterceptor.class.getName());
-        final String counterActionKey = BaseRetryInterceptor.class.getName() + ".counterAction_"
-                + contextData.get(IdGeneratorInterceptor.class.getName());
-        AtomicInteger counter = AtomicInteger.class.cast(contextData.get(counterKey));
-        if (counter == null) {
-            counter = new AtomicInteger(model.maxRetries);
-            contextData.put(counterKey, counter);
+        Context retryContext = Context.class.cast(contextData.get(contextKey));
+        if (retryContext == null) {
+            retryContext = new Context(System.nanoTime() + model.maxDuration, model.maxRetries);
+            contextData.put(contextKey, retryContext);
         }
 
-        while (counter.get() >= 0) {
+        while (retryContext.counter >= 0) {
             try {
                 final Object proceed = context.proceed();
-                if (counter.get() == model.maxRetries) {
-                    executeFinalCounterAction(contextData, counterActionKey, model.callsSucceededNotRetried);
+                if (retryContext.counter == model.maxRetries) {
+                    executeFinalCounterAction(contextData, model.callsSucceededNotRetried);
                 } else {
-                    executeFinalCounterAction(contextData, counterActionKey, model.callsSucceededRetried);
+                    executeFinalCounterAction(contextData, model.callsSucceededRetried);
                 }
                 return proceed;
+            } catch (final CircuitBreakerOpenException cboe) {
+                throw cboe;
             } catch (final Exception re) {
                 // refresh the counter from the other interceptors
-                counter = AtomicInteger.class.cast(contextData.get(counterKey));
+                retryContext = Context.class.cast(contextData.get(contextKey));
 
-                if (model.abortOn(re) || counter.decrementAndGet() < 0) {
-                    executeFinalCounterAction(contextData, counterActionKey, model.callsFailed);
+                if (model.abortOn(re) || (--retryContext.counter) < 0 || System.nanoTime() >= retryContext.maxEnd) {
+                    executeFinalCounterAction(contextData, model.callsFailed);
                     throw re;
                 }
                 if (!model.retryOn(re)) {
@@ -94,8 +94,7 @@ public abstract class BaseRetryInterceptor implements Serializable {
         throw new FaultToleranceException("Inaccessible normally, here for compilation");
     }
 
-    protected abstract void executeFinalCounterAction(Map<String, Object> contextData, String counterActionKey,
-            FaultToleranceMetrics.Counter counter);
+    protected abstract void executeFinalCounterAction(Map<String, Object> contextData, FaultToleranceMetrics.Counter counter);
 
     static class Model {
 
@@ -184,6 +183,16 @@ public abstract class BaseRetryInterceptor implements Serializable {
                     metrics.counter(metricsNameBase + "callsFailed.total",
                             "The number of times the method was called and ultimately failed after retrying"),
                     metrics.counter(metricsNameBase + "retries.total", "The total number of times the method was retried"));
+        }
+    }
+
+    private static class Context {
+        private final long maxEnd;
+        private int counter;
+
+        private Context(final long maxEnd, final int maxRetries) {
+            this.maxEnd = maxEnd;
+            this.counter = maxRetries;
         }
     }
 }

@@ -44,7 +44,7 @@ import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceDefiniti
 
 @CircuitBreaker
 @Interceptor
-@Priority(Interceptor.Priority.PLATFORM_AFTER + 2)
+@Priority(Interceptor.Priority.PLATFORM_AFTER + 12)
 public class CircuitBreakerInterceptor implements Serializable {
     @Inject
     private Cache cache;
@@ -337,7 +337,7 @@ public class CircuitBreakerInterceptor implements Serializable {
 
     private static class CheckIntervalData {
         private final int length;
-        private final Boolean[] states; // todo: revise that
+        private final Boolean[] states; // todo: revise that but seems the spec sucks
         private final long checkIntervalStart;
 
         CheckIntervalData(final int length, final Boolean[] states, final long intervalStart) {

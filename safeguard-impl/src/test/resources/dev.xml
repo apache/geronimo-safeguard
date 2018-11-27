@@ -16,20 +16,15 @@
   limitations under the License.
   -->
 <!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd" >
-<suite name="Dev Manual Test Run" verbose="2" configfailurepolicy="continue" >
-  <test name="Manual Run">
+<suite name="Dev TCK Run" verbose="2" configfailurepolicy="continue" >
+  <test name="TCK Run">
     <!-- all TCK -->
-    <!--<packages>
-      <package name="org.eclipse.microprofile.fault.tolerance.tck" />
+    <packages>
+      <package name="org.eclipse.microprofile.fault.tolerance.tck.*" />
     </packages>
-  -->
     <classes>
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.AsynchronousTest"></class>
       <!--
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.AsyncTimeoutTest"></class>
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.CircuitBreakerRetryTest"></class>
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.RetryTest"></class>
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.ConfigTest"></class>
+      <class name="org.eclipse.microprofile.fault.tolerance.tck.CircuitBreakerRetryTest" />
       -->
     </classes>
   </test>

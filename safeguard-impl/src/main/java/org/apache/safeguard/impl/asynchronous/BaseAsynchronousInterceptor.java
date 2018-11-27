@@ -52,12 +52,14 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
 
         final Class<?> returnType = context.getMethod().getReturnType();
         if (CompletionStage.class.isAssignableFrom(returnType)) {
-            final CompletableFuture future = new CompletableFuture<>();
+            final ExtendedCompletableFuture<Object> future = newCompletableFuture(context);
             getExecutor(context).execute(() -> {
                 try {
+                    future.before();
                     final Object proceed = context.proceed();
                     final CompletionStage<?> stage = CompletionStage.class.cast(proceed);
                     stage.handle((r, e) -> {
+                        future.after();
                         if (e != null) {
                             future.completeExceptionally(e);
                         } else {
@@ -72,10 +74,11 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
             return future;
         }
         if (Future.class.isAssignableFrom(returnType)) {
-            final FutureWrapper<Object> facade = new FutureWrapper<>();
+            final FutureWrapper<Object> facade = newFuture(context);
             getExecutor(context).execute(() -> {
                 final Object proceed;
                 try {
+                    facade.before();
                     proceed = context.proceed();
                     facade.setDelegate(Future.class.cast(proceed));
                 } catch (final Exception e) {
@@ -91,12 +94,34 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
                         "Should be Future or CompletionStage.");
     }
 
-    private static class FutureWrapper<T> implements Future<T> {
+    protected FutureWrapper<Object> newFuture(final InvocationContext context) {
+        return new FutureWrapper<>();
+    }
+
+    protected ExtendedCompletableFuture<Object> newCompletableFuture(final InvocationContext context) {
+        return new ExtendedCompletableFuture<>();
+    }
+
+    public static class ExtendedCompletableFuture<T> extends CompletableFuture<T> {
+        public void before() {
+            // no-op
+        }
+
+        public void after() {
+            // no-op
+        }
+    }
+
+    public static class FutureWrapper<T> implements Future<T> {
         private final AtomicReference<Future<T>> delegate = new AtomicReference<>();
         private final AtomicReference<Consumer<Future<T>>> cancelled = new AtomicReference<>();
         private final CountDownLatch latch = new CountDownLatch(1);
 
-        private void setDelegate(final Future<T> delegate) {
+        public void before() {
+            // no-op
+        }
+
+        public void setDelegate(final Future<T> delegate) {
             final Consumer<Future<T>> cancelledTask = cancelled.get();
             if (cancelledTask != null) {
                 cancelledTask.accept(delegate);
