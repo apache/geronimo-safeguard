@@ -18,6 +18,8 @@
  */
 package org.apache.safeguard.impl.asynchronous;
 
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
+
 import java.io.Serializable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -28,8 +30,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
-import javax.interceptor.AroundInvoke;
 import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.interceptor.IdGeneratorInterceptor;
@@ -70,63 +72,71 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
             return future;
         }
         if (Future.class.isAssignableFrom(returnType)) {
-            final CountDownLatch latch = new CountDownLatch(1);
-            final AtomicReference<Future<?>> ref = new AtomicReference<>();
+            final FutureWrapper<Object> facade = new FutureWrapper<>();
             getExecutor(context).execute(() -> {
                 final Object proceed;
                 try {
                     proceed = context.proceed();
-                    ref.set(Future.class.cast(proceed));
+                    facade.setDelegate(Future.class.cast(proceed));
                 } catch (final Exception e) {
                     final CompletableFuture<Object> failingFuture = new CompletableFuture<>();
                     failingFuture.completeExceptionally(e);
-                    ref.set(failingFuture);
-                } finally {
-                    latch.countDown();
+                    facade.setDelegate(failingFuture);
                 }
             });
-            return new Future() {
-                private void await() {
-                    try {
-                        latch.await();
-                    } catch (final InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-
-                @Override
-                public boolean cancel(final boolean mayInterruptIfRunning) {
-                    await();
-                    return ref.get().cancel(mayInterruptIfRunning);
-                }
-
-                @Override
-                public boolean isCancelled() {
-                    await();
-                    return ref.get().isCancelled();
-                }
-
-                @Override
-                public boolean isDone() {
-                    await();
-                    return ref.get().isDone();
-                }
-
-                @Override
-                public Object get() throws InterruptedException, ExecutionException {
-                    await();
-                    return ref.get().get();
-                }
-
-                @Override
-                public Object get(final long timeout, final TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-                    await();
-                    return ref.get().get(timeout, unit);
-                }
-            };
+            return facade;
         }
         throw new FaultToleranceDefinitionException(
                 "Unsupported return type: " + returnType + " (from: " + context.getMethod() + ")." +
                         "Should be Future or CompletionStage.");
+    }
+
+    private static class FutureWrapper<T> implements Future<T> {
+        private final AtomicReference<Future<T>> delegate = new AtomicReference<>();
+        private final AtomicReference<Consumer<Future<T>>> cancelled = new AtomicReference<>();
+        private final CountDownLatch latch = new CountDownLatch(1);
+
+        private void setDelegate(final Future<T> delegate) {
+            final Consumer<Future<T>> cancelledTask = cancelled.get();
+            if (cancelledTask != null) {
+                cancelledTask.accept(delegate);
+            }
+            this.delegate.set(delegate);
+            this.latch.countDown();
+        }
+
+        @Override
+        public boolean cancel(final boolean mayInterruptIfRunning) {
+            cancelled.set(f -> f.cancel(mayInterruptIfRunning));
+            return true;
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return cancelled.get() != null;
+        }
+
+        @Override
+        public boolean isDone() {
+            final Future<T> future = delegate.get();
+            return future != null && future.isDone();
+        }
+
+        @Override
+        public T get() throws InterruptedException, ExecutionException {
+            latch.await();
+            return delegate.get().get();
+        }
+
+        @Override
+        public T get(final long timeout, final TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
+            final long latchWaitStart = System.nanoTime();
+            final boolean latchWait = latch.await(timeout, unit);
+            final long latchWaitDuration = System.nanoTime() - latchWaitStart;
+            if (!latchWait) {
+                throw new TimeoutException();
+            }
+            return delegate.get().get(unit.toNanos(timeout) - latchWaitDuration, NANOSECONDS);
+        }
     }
 }
