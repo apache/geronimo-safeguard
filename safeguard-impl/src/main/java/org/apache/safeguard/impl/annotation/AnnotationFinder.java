@@ -34,7 +34,11 @@ public class AnnotationFinder {
     private BeanManager manager;
 
     public <T extends Annotation> T findAnnotation(final Class<T> type, final InvocationContext context) {
-        Class<?> target = context.getTarget().getClass();
+        // normally we should use target but validations require the fallback
+        final Class<?> targetClass = ofNullable(context.getTarget())
+                .map(Object::getClass)
+                .orElseGet(() -> Class.class.cast(type));
+        Class<?> target = targetClass;
         while (target.getName().contains("$$")) {
             target = target.getSuperclass();
         }
@@ -44,6 +48,6 @@ public class AnnotationFinder {
                 .findFirst()
                 .map(m -> m.getAnnotation(type))
                 .orElseGet(() -> ofNullable(context.getMethod().getAnnotation(type))
-                        .orElseGet(() -> context.getTarget().getClass().getAnnotation(type)));
+                        .orElseGet(() -> targetClass.getAnnotation(type)));
     }
 }

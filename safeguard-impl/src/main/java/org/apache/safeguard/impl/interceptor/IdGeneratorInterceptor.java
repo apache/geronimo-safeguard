@@ -68,12 +68,6 @@ public class IdGeneratorInterceptor implements Serializable {
         } catch (final Exception | Error e) {
             methodCounters.failed.inc();
             throw e;
-        } finally {
-            if (old != null) {
-                context.getContextData().put(IdGeneratorInterceptor.class.getName(), old);
-            } else {
-                context.getContextData().remove(IdGeneratorInterceptor.class.getName());
-            }
         }
     }
 

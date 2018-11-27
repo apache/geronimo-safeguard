@@ -62,6 +62,10 @@ public class TimeoutInterceptor implements Serializable {
             model = cache.create(context);
             timeouts.putIfAbsent(context.getMethod(), model);
         }
+        if (model.disabled) {
+            return context.proceed();
+        }
+
         final FutureTask<Object> task = new FutureTask<>(context::proceed);
         final long start = System.nanoTime();
         executor.execute(task);
@@ -100,13 +104,15 @@ public class TimeoutInterceptor implements Serializable {
     }
 
     private static class Model {
+        private final boolean disabled;
         private final long timeout;
         private final FaultToleranceMetrics.Histogram executionDuration;
         private final FaultToleranceMetrics.Counter timeouts;
         private final FaultToleranceMetrics.Counter successes;
 
-        private Model(final long timeout, final FaultToleranceMetrics.Histogram executionDuration,
+        private Model(final boolean disabled, final long timeout, final FaultToleranceMetrics.Histogram executionDuration,
                       final FaultToleranceMetrics.Counter timeouts, final FaultToleranceMetrics.Counter successes) {
+            this.disabled = disabled;
             this.timeout = timeout;
             this.executionDuration = executionDuration;
             this.timeouts = timeouts;
@@ -139,6 +145,7 @@ public class TimeoutInterceptor implements Serializable {
             final String metricsNameBase = "ft." + context.getMethod().getDeclaringClass().getCanonicalName() + "." +
                     context.getMethod().getName() + ".timeout.";
             return new Model(
+                    !mapper.isEnabled(context.getMethod(), Timeout.class),
                     timeout.unit().getDuration().toNanos() * timeout.value(),
                     metrics.histogram(metricsNameBase + "executionDuration", "Histogram of execution times for the method"),
                     metrics.counter(metricsNameBase + "callsTimedOut.total", "The number of times the method timed out"),

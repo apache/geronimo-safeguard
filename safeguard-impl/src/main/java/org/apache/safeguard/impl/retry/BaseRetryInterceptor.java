@@ -25,6 +25,7 @@ import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -35,6 +36,7 @@ import javax.interceptor.AroundInvoke;
 import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
+import org.apache.safeguard.impl.asynchronous.BaseAsynchronousInterceptor;
 import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.interceptor.IdGeneratorInterceptor;
 import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
@@ -55,17 +57,20 @@ public abstract class BaseRetryInterceptor implements Serializable {
             model = cache.create(context);
             models.putIfAbsent(context.getMethod(), model);
         }
+        if (model.disabled) {
+            return context.proceed();
+        }
 
         final Map<String, Object> contextData = context.getContextData();
-        final String contextKey = BaseRetryInterceptor.class.getName() + ".context_"
-                + contextData.get(IdGeneratorInterceptor.class.getName());
+        final Object id = contextData.get(IdGeneratorInterceptor.class.getName());
+        final String contextKey = BaseRetryInterceptor.class.getName() + ".context_" + id;
         Context retryContext = Context.class.cast(contextData.get(contextKey));
         if (retryContext == null) {
             retryContext = new Context(System.nanoTime() + model.maxDuration, model.maxRetries);
             contextData.put(contextKey, retryContext);
         }
 
-        while (retryContext.counter >= 0) {
+        while (retryContext.counter >= 0) { // todo: handle async if result is a Future or CompletionStage (weird no?)
             try {
                 final Object proceed = context.proceed();
                 if (retryContext.counter == model.maxRetries) {
@@ -73,25 +78,40 @@ public abstract class BaseRetryInterceptor implements Serializable {
                 } else {
                     executeFinalCounterAction(contextData, model.callsSucceededRetried);
                 }
+                if (BaseAsynchronousInterceptor.BaseFuture.class.isInstance(proceed)) {
+                    final Model modelRef = model;
+                    contextData.put(BaseAsynchronousInterceptor.BaseFuture.class.getName() + ".errorHandler_" + id,
+                        (BaseAsynchronousInterceptor.ErrorHandler<Exception, Future<?>>) error -> {
+                            handleException(contextData, contextKey, modelRef, error);
+                            return Future.class.cast(context.proceed());
+                        });
+                }
                 return proceed;
-            } catch (final CircuitBreakerOpenException cboe) {
-                throw cboe;
             } catch (final Exception re) {
-                // refresh the counter from the other interceptors
-                retryContext = Context.class.cast(contextData.get(contextKey));
-
-                if (model.abortOn(re) || (--retryContext.counter) < 0 || System.nanoTime() >= retryContext.maxEnd) {
-                    executeFinalCounterAction(contextData, model.callsFailed);
-                    throw re;
-                }
-                if (!model.retryOn(re)) {
-                    throw re;
-                }
-                model.retries.inc();
-                Thread.sleep(model.nextPause());
+                handleException(contextData, contextKey, model, re);
             }
         }
         throw new FaultToleranceException("Inaccessible normally, here for compilation");
+    }
+
+    private void handleException(final Map<String, Object> contextData, final String contextKey,
+                                 final Model modelRef, final Exception error) throws Exception {
+        if (CircuitBreakerOpenException.class.isInstance(error)) {
+            throw error;
+        }
+
+        // refresh the counter from the other interceptors
+        final Context ctx = Context.class.cast(contextData.get(contextKey));
+
+        if (modelRef.abortOn(error) || (--ctx.counter) < 0 || System.nanoTime() >= ctx.maxEnd) {
+            executeFinalCounterAction(contextData, modelRef.callsFailed);
+            throw error;
+        }
+        if (!modelRef.retryOn(error)) {
+            throw error;
+        }
+        modelRef.retries.inc();
+        Thread.sleep(modelRef.nextPause());
     }
 
     protected abstract void executeFinalCounterAction(Map<String, Object> contextData, FaultToleranceMetrics.Counter counter);
@@ -118,9 +138,13 @@ public abstract class BaseRetryInterceptor implements Serializable {
 
         private final FaultToleranceMetrics.Counter retries;
 
-        private Model(final Retry retry, final FaultToleranceMetrics.Counter callsSucceededNotRetried,
-                final FaultToleranceMetrics.Counter callsSucceededRetried, final FaultToleranceMetrics.Counter callsFailed,
-                final FaultToleranceMetrics.Counter retries) {
+        private final boolean disabled;
+
+        private Model(final boolean disabled,
+                      final Retry retry, final FaultToleranceMetrics.Counter callsSucceededNotRetried,
+                      final FaultToleranceMetrics.Counter callsSucceededRetried, final FaultToleranceMetrics.Counter callsFailed,
+                      final FaultToleranceMetrics.Counter retries) {
+            this.disabled = disabled;
             this.abortOn = retry.abortOn();
             this.retryOn = retry.retryOn();
             this.maxDuration = retry.delayUnit().getDuration().toNanos() * retry.maxDuration();
@@ -131,6 +155,19 @@ public abstract class BaseRetryInterceptor implements Serializable {
             this.callsSucceededRetried = callsSucceededRetried;
             this.callsFailed = callsFailed;
             this.retries = retries;
+
+            if (maxRetries < 0) {
+                throw new FaultToleranceException("max retries can't be negative");
+            }
+            if (delay < 0) {
+                throw new FaultToleranceException("delay can't be negative");
+            }
+            if (maxDuration < 0) {
+                throw new FaultToleranceException("max duration can't be negative");
+            }
+            if (jitter < 0) {
+                throw new FaultToleranceException("jitter can't be negative");
+            }
         }
 
         private boolean abortOn(final Exception re) {
@@ -175,7 +212,9 @@ public abstract class BaseRetryInterceptor implements Serializable {
             final Retry configuredRetry = configurationMapper.map(retry, context.getMethod(), Retry.class);
             final String metricsNameBase = "ft." + context.getMethod().getDeclaringClass().getCanonicalName() + "."
                     + context.getMethod().getName() + ".retry.";
-            return new Model(configuredRetry,
+            return new Model(
+                    !configurationMapper.isEnabled(context.getMethod(), Retry.class),
+                    configuredRetry,
                     metrics.counter(metricsNameBase + "callsSucceededNotRetried.total",
                             "The number of times the method was called and succeeded without retrying"),
                     metrics.counter(metricsNameBase + "callsSucceededRetried.total",

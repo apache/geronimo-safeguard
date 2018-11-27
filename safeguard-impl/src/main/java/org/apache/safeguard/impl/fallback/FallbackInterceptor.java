@@ -18,6 +18,8 @@
  */
 package org.apache.safeguard.impl.fallback;
 
+import static java.util.Optional.ofNullable;
+
 import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -52,7 +54,7 @@ import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceDefiniti
 
 // @Fallback - added through the extension since the @Target doesnt allow it
 @Interceptor
-@Priority(Interceptor.Priority.PLATFORM_AFTER)
+@Priority(Interceptor.Priority.PLATFORM_AFTER + 2)
 public class FallbackInterceptor implements Serializable {
     @Inject
     private Cache cache;
@@ -123,6 +125,19 @@ public class FallbackInterceptor implements Serializable {
         }
 
         public FallbackHandler<?> create(final InvocationContext context) {
+            if (!mapper.isEnabled(context.getMethod(), Fallback.class)) {
+                return (FallbackHandler<Object>) context13 -> {
+                    final Throwable failure = context13.getFailure();
+                    if (RuntimeException.class.isInstance(failure)) {
+                        throw RuntimeException.class.cast(failure);
+                    }
+                    if (Error.class.isInstance(failure)) {
+                        throw Error.class.cast(failure);
+                    }
+                    throw new IllegalStateException(failure);
+                };
+            }
+
             final Fallback fallback = mapper.map(finder.findAnnotation(Fallback.class, context), context.getMethod(), Fallback.class);
             final Class<? extends FallbackHandler<?>> value = fallback.value();
             final String method = fallback.fallbackMethod();
@@ -151,9 +166,10 @@ public class FallbackInterceptor implements Serializable {
                 handler = fallbackHandler;
             } else {
                 try {
-                    final Method fallbackMethod = context.getTarget()
-                                                         .getClass()
-                                                         .getMethod(method, context.getMethod().getParameterTypes());
+                    final Method fallbackMethod = ofNullable(context.getTarget())
+                            .map(Object::getClass)
+                            .orElseGet(() -> Class.class.cast(context.getMethod().getDeclaringClass()))
+                            .getMethod(method, context.getMethod().getParameterTypes());
                     if (!extension.toClass(context.getMethod()
                                                   .getReturnType())
                                   .isAssignableFrom(extension.toClass(fallbackMethod.getReturnType())) || !Arrays.equals(
@@ -166,13 +182,19 @@ public class FallbackInterceptor implements Serializable {
                     }
                     handler = (FallbackHandler<Object>) context1 -> {
                         try {
-                            return fallbackMethod.invoke(EnrichedExecutionContext.class.cast(context1)
-                                                                                       .getTarget(),
-                                    context1.getParameters());
+                            return fallbackMethod.invoke(
+                                    EnrichedExecutionContext.class.cast(context1).getTarget(), context1.getParameters());
                         } catch (final IllegalAccessException e) {
                             throw new IllegalStateException(e);
                         } catch (final InvocationTargetException e) {
-                            throw new IllegalStateException(e.getTargetException());
+                            final Throwable targetException = e.getTargetException();
+                            if (RuntimeException.class.isInstance(targetException)) {
+                                throw RuntimeException.class.cast(targetException);
+                            }
+                            if (Error.class.isInstance(targetException)) {
+                                throw Error.class.cast(targetException);
+                            }
+                            throw new IllegalStateException(targetException);
                         }
                     };
                 } catch (final NoSuchMethodException e) {

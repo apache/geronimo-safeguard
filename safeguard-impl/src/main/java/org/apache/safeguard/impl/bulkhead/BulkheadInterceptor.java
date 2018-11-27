@@ -18,6 +18,7 @@
  */
 package org.apache.safeguard.impl.bulkhead;
 
+import static java.util.Optional.ofNullable;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import java.lang.reflect.Method;
@@ -25,8 +26,8 @@ import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -40,6 +41,7 @@ import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
 import org.apache.safeguard.impl.asynchronous.BaseAsynchronousInterceptor;
+import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.interceptor.IdGeneratorInterceptor;
 import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 import org.eclipse.microprofile.faulttolerance.Asynchronous;
@@ -63,12 +65,19 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
             final Model existing = models.putIfAbsent(context.getMethod(), model);
             if (existing != null) {
                 model = existing;
+            } else {
+                cache.postCreate(model, context);
             }
         }
+        if (model.disabled) {
+            return context.proceed();
+        }
         if (model.useThreads) {
-            final Object id = context.getContextData().get(IdGeneratorInterceptor.class.getName());
-            context.getContextData().put(BulkheadInterceptor.class.getName() + ".model_" + id, model.pool);
-            context.getContextData().put(BulkheadInterceptor.class.getName() + "_" + id, model.pool);
+            final Map<String, Object> data = context.getContextData();
+            final Object id = data.get(IdGeneratorInterceptor.class.getName());
+            data.put(BulkheadInterceptor.class.getName() + ".model_" + id, model);
+            data.put(BulkheadInterceptor.class.getName() + "_" + id, model.pool);
+            data.put(Asynchronous.class.getName() + ".skip_" + id, Boolean.TRUE);
             return around(context);
         } else {
             if (!model.semaphore.tryAcquire()) {
@@ -94,10 +103,12 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
                 context.getContextData().get(IdGeneratorInterceptor.class.getName())));
     }
 
-    protected FutureWrapper<Object> newFuture(final InvocationContext context) {
-        return new ContextualFutureWrapper<>(getModel(context));
+    @Override
+    protected FutureWrapper<Object> newFuture(final InvocationContext context, final Map<String, Object> data) {
+        return new ContextualFutureWrapper<>(getModel(context), context.getContextData());
     }
 
+    @Override
     protected ExtendedCompletableFuture<Object> newCompletableFuture(final InvocationContext context) {
         return new ContextualCompletableFuture<>(getModel(context));
     }
@@ -105,7 +116,7 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
     @Override
     protected Executor getExecutor(final InvocationContext context) {
         return Executor.class.cast(context.getContextData()
-                  .get(BulkheadInterceptor.class.getName() + context.getContextData().get(IdGeneratorInterceptor.class.getName())));
+                  .get(BulkheadInterceptor.class.getName() + "_" + context.getContextData().get(IdGeneratorInterceptor.class.getName())));
     }
 
     private static class ContextualCompletableFuture<T> extends ExtendedCompletableFuture<T> {
@@ -129,7 +140,8 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
     private static class ContextualFutureWrapper<T> extends FutureWrapper<T> {
         private final Model model;
 
-        private ContextualFutureWrapper(final Model model) {
+        private ContextualFutureWrapper(final Model model, final Map<String, Object> data) {
+            super(data);
             this.model = model;
         }
 
@@ -139,13 +151,13 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
         }
 
         @Override
-        public void setDelegate(final Future<T> delegate) {
+        public void after() {
             model.concurrentCalls.decrementAndGet();
-            super.setDelegate(delegate);
         }
     }
 
     static class Model {
+        private final boolean disabled;
         private final int value;
         private final int waitingQueue;
         private final boolean useThreads;
@@ -158,11 +170,13 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
         private final FaultToleranceMetrics.Histogram executionDuration;
         private final FaultToleranceMetrics.Histogram waitingDuration;
 
-        private Model(final Bulkhead bulkhead, final boolean useThreads,
+        private Model(final boolean disabled, final InvocationContext context,
+                      final Bulkhead bulkhead, final boolean useThreads,
                       final FaultToleranceMetrics.Counter callsAccepted,
                       final FaultToleranceMetrics.Counter callsRejected,
                       final FaultToleranceMetrics.Histogram executionDuration,
                       final FaultToleranceMetrics.Histogram waitingDuration) {
+            this.disabled = disabled;
             this.value = bulkhead.value();
             if (this.value <= 0) {
                 throw new FaultToleranceDefinitionException("Invalid value in @Bulkhead: " + value);
@@ -181,7 +195,22 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
             this.useThreads = useThreads;
             if (this.useThreads) { // important: use a pool dedicated for that concern and not a reusable one
                 this.workQueue = new ArrayBlockingQueue<>(waitingQueue);
-                this.pool = new ThreadPoolExecutor(value, value, 0L, MILLISECONDS, workQueue) {
+                this.pool = new ThreadPoolExecutor(value, value, 0L, MILLISECONDS, workQueue, new ThreadFactory() {
+                    private final ThreadGroup group = ofNullable(System.getSecurityManager())
+                            .map(SecurityManager::getThreadGroup)
+                            .orElseGet(() -> Thread.currentThread().getThreadGroup());
+                    private final String prefix = "org.apache.geronimo.safeguard.bulkhead@" +
+                            System.identityHashCode(this) + "[" + context.getMethod() + "]-";
+                    private final AtomicLong counter = new AtomicLong();
+
+                    @Override
+                    public Thread newThread(final Runnable r) {
+                        return new Thread(group, r, prefix + counter.incrementAndGet());
+                    }
+                }, (r, executor) -> {
+                    callsRejected.inc();
+                    throw new BulkheadException("Can't accept task " + r);
+                }) {
                     @Override
                     public void execute(final Runnable command) {
                         final long submitted = System.nanoTime();
@@ -197,10 +226,6 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
                         callsAccepted.inc();
                     }
                 };
-                this.pool.setRejectedExecutionHandler((r, executor) -> {
-                    callsRejected.inc();
-                    throw new BulkheadException("Can't accept task " + r);
-                });
                 this.semaphore = null;
             } else {
                 this.workQueue = null;
@@ -220,6 +245,9 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
         @Inject
         private FaultToleranceMetrics metrics;
 
+        @Inject
+        private ConfigurationMapper configurationMapper;
+
         @PreDestroy
         private void destroy() {
             models.values().stream().filter(m -> m.pool != null).forEach(m -> m.pool.shutdownNow());
@@ -232,8 +260,7 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
         public Model create(final InvocationContext context) {
             final boolean useThreads = finder.findAnnotation(Asynchronous.class, context) != null;
 
-            final String metricsNameBase = "ft." + context.getMethod().getDeclaringClass().getCanonicalName() + "."
-                    + context.getMethod().getName() + ".bulkhead.";
+            final String metricsNameBase = getMetricsNameBase(context);
             final FaultToleranceMetrics.Counter callsAccepted = metrics.counter(metricsNameBase + "callsAccepted.total",
                     "Number of calls accepted by the bulkhead");
             final FaultToleranceMetrics.Counter callsRejected = metrics.counter(metricsNameBase + "callsRejected.total",
@@ -248,18 +275,25 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
                 waitingDuration = null;
             }
 
-            final Model model = new Model(
-                    finder.findAnnotation(Bulkhead.class, context), useThreads,
-                    callsAccepted, callsRejected, executionDuration, waitingDuration);
+            return new Model(
+                    !configurationMapper.isEnabled(context.getMethod(), Bulkhead.class), context,
+                    configurationMapper.map(finder.findAnnotation(Bulkhead.class, context), context.getMethod(), Bulkhead.class),
+                    useThreads, callsAccepted, callsRejected, executionDuration, waitingDuration);
+        }
 
+        private String getMetricsNameBase(InvocationContext context) {
+            return "ft." + context.getMethod().getDeclaringClass().getCanonicalName() + "."
+                    + context.getMethod().getName() + ".bulkhead.";
+        }
+
+        public void postCreate(final Model model, final InvocationContext context) {
+            final String metricsNameBase = getMetricsNameBase(context);
             metrics.gauge(metricsNameBase + "concurrentExecutions", "Number of currently running executions",
                     "none", model.concurrentCalls::get);
             if (model.workQueue != null) {
                 metrics.gauge(metricsNameBase + "waitingQueue.population",
                         "Number of executions currently waiting in the queue", "none", () -> (long) model.workQueue.size());
             }
-
-            return model;
         }
     }
 }

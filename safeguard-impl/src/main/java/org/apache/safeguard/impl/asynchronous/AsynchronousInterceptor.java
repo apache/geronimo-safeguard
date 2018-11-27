@@ -18,32 +18,75 @@
  */
 package org.apache.safeguard.impl.asynchronous;
 
+import java.lang.reflect.Method;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
 import javax.annotation.Priority;
+import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
 import javax.interceptor.AroundInvoke;
 import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
+import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.customizable.Safeguard;
+import org.apache.safeguard.impl.interceptor.IdGeneratorInterceptor;
 import org.eclipse.microprofile.faulttolerance.Asynchronous;
 
 @Interceptor
 @Asynchronous
-@Priority(Interceptor.Priority.PLATFORM_AFTER + 1)
+@Priority(Interceptor.Priority.PLATFORM_AFTER + 6)
 public class AsynchronousInterceptor extends BaseAsynchronousInterceptor {
     @Inject
-    @Safeguard
-    private Executor executor;
+    private Cache cache;
 
     @Override
     protected Executor getExecutor(final InvocationContext context) {
-        return executor;
+        return cache.getExecutor();
     }
 
     @AroundInvoke
     public Object async(final InvocationContext context) throws Exception {
+        final Map<Method, Boolean> models = cache.getEnabled();
+        Boolean enabled = models.get(context.getMethod());
+        if (enabled == null) {
+            enabled = cache.getMapper().isEnabled(context.getMethod(), Asynchronous.class);
+            models.putIfAbsent(context.getMethod(), enabled);
+        }
+        if (!enabled) {
+            return context.proceed();
+        }
+        final String key = Asynchronous.class.getName() + ".skip_" +
+                context.getContextData().get(IdGeneratorInterceptor.class.getName());
+        if (context.getContextData().putIfAbsent(key, Boolean.TRUE) != null) { // bulkhead or so handling threading
+            return context.proceed();
+        }
         return around(context);
+    }
+
+    @ApplicationScoped
+    public static class Cache {
+        private final Map<Method, Boolean> enabled = new ConcurrentHashMap<>();
+
+        @Inject
+        @Safeguard
+        private Executor executor;
+
+        @Inject
+        private ConfigurationMapper mapper;
+
+        public ConfigurationMapper getMapper() {
+            return mapper;
+        }
+
+        public Executor getExecutor() {
+            return executor;
+        }
+
+        public Map<Method, Boolean> getEnabled() {
+            return enabled;
+        }
     }
 }

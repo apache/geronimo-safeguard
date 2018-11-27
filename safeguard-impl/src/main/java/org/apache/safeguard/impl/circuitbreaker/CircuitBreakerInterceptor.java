@@ -60,6 +60,9 @@ public class CircuitBreakerInterceptor implements Serializable {
                 circuitBreaker = existing;
             }
         }
+        if (circuitBreaker.disabled) {
+            return context.proceed();
+        }
 
         final CheckResult state = circuitBreaker.performStateCheck(CheckType.READ_ONLY);
         if (state == CheckResult.OPEN) {
@@ -187,8 +190,8 @@ public class CircuitBreakerInterceptor implements Serializable {
             final Class<? extends Throwable>[] failOn = definition.failOn();
 
             final double failureRatio = definition.failureRatio();
-            if (failureRatio < 0) {
-                throw new FaultToleranceDefinitionException("CircuitBreaker failure ratio can't be < 0");
+            if (failureRatio < 0 || failureRatio > 1) {
+                throw new FaultToleranceDefinitionException("CircuitBreaker failure ratio can't be < 0 and > 1");
             }
 
             final int volumeThreshold = definition.requestVolumeThreshold();
@@ -197,14 +200,16 @@ public class CircuitBreakerInterceptor implements Serializable {
             }
 
             final int successThreshold = definition.successThreshold();
-            if (successThreshold < 0) {
-                throw new FaultToleranceDefinitionException("CircuitBreaker success threshold can't be < 0");
+            if (successThreshold <= 0) {
+                throw new FaultToleranceDefinitionException("CircuitBreaker success threshold can't be <= 0");
             }
 
             final String metricsNameBase = "ft." + context.getMethod().getDeclaringClass().getCanonicalName() + "."
                     + context.getMethod().getName() + ".circuitbreaker.";
 
-            final CircuitBreakerImpl circuitBreaker = new CircuitBreakerImpl(volumeThreshold, delay, successThreshold,
+            final CircuitBreakerImpl circuitBreaker = new CircuitBreakerImpl(
+                    !mapper.isEnabled(context.getMethod(), CircuitBreaker.class),
+                    volumeThreshold, delay, successThreshold,
                     failOn, failureRatio, metrics.counter(metricsNameBase + "callsSucceeded.total",
                     "Number of calls allowed to run by the circuit breaker that returned successfully"),
                     metrics.counter(metricsNameBase + "callsFailed.total",
@@ -232,6 +237,7 @@ public class CircuitBreakerInterceptor implements Serializable {
         private static final Boolean[] FIRST_SUCCESS_ARRAY = {Boolean.TRUE};
         private static final Boolean[] FIRST_FAILURE_ARRAY = {Boolean.FALSE};
 
+        private final boolean disabled;
         private final AtomicReference<State> state = new AtomicReference<>(State.CLOSED);
         private final AtomicReference<CheckIntervalData> checkIntervalData;
         private final int volumeThreshold;
@@ -248,12 +254,14 @@ public class CircuitBreakerInterceptor implements Serializable {
         private final AtomicLong closedDuration = new AtomicLong();
         private final FaultToleranceMetrics.Counter opened;
 
-        CircuitBreakerImpl(final int volumeThreshold, final long delay, final int successThreshold,
+        CircuitBreakerImpl(final boolean disabled,
+                           final int volumeThreshold, final long delay, final int successThreshold,
                            final Class<? extends Throwable>[] failOn, final double failureRatio,
                            final FaultToleranceMetrics.Counter callsSucceeded,
                            final FaultToleranceMetrics.Counter callsFailed,
                            final FaultToleranceMetrics.Counter callsPrevented,
                            final FaultToleranceMetrics.Counter opened) {
+            this.disabled = disabled;
             this.checkIntervalData = new AtomicReference<>(new CheckIntervalData(volumeThreshold, EMPTY_ARRAY, 0));
             this.volumeThreshold = volumeThreshold;
             this.delay = delay;

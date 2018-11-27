@@ -29,6 +29,8 @@ import java.util.stream.StreamSupport;
 import javax.annotation.Priority;
 import javax.enterprise.inject.spi.CDI;
 
+import org.apache.safeguard.impl.config.GeronimoFaultToleranceConfig;
+
 public interface FaultToleranceMetrics {
     Counter counter(String name, String description);
     void gauge(String name, String description, String unit, Supplier<Long> supplier);
@@ -45,7 +47,10 @@ public interface FaultToleranceMetrics {
     interface Gauge extends Supplier<Long> {
     }
 
-    static FaultToleranceMetrics create() {
+    static FaultToleranceMetrics create(final GeronimoFaultToleranceConfig config) {
+        if ("false".equalsIgnoreCase(config.read("MP_Fault_Tolerance_Metrics_Enabled"))) {
+            return new NoMetrics();
+        }
         try {
             final Optional<FaultToleranceMetrics> iterator = StreamSupport.stream(
                     ServiceLoader.load(FaultToleranceMetrics.class).spliterator(), false)

@@ -27,12 +27,15 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.inject.spi.AnnotatedType;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.inject.Inject;
+
+import org.eclipse.microprofile.faulttolerance.Fallback;
 
 @ApplicationScoped
 public class ConfigurationMapper {
@@ -52,26 +55,50 @@ public class ConfigurationMapper {
         }));
     }
 
+    public <T extends Annotation> boolean isEnabled(final Method method, final Class<T> api) {
+        final boolean methodLevel = isDefinedAtMethodLevel(method, api);
+        final Supplier<Boolean> globalEvaluator = () ->
+            ofNullable(findClassConfiguration(api, method, "enabled"))
+                    .map(Boolean::parseBoolean)
+                    .orElseGet(() -> ofNullable(config.read(String.format("%s/%s", api.getSimpleName(), "enabled")))
+                        .map(Boolean::parseBoolean)
+                        .orElseGet(() -> Fallback.class == api ?
+                            true :
+                            ofNullable(config.read("MP_Fault_Tolerance_NonFallback_Enabled"))
+                                    .map(Boolean::parseBoolean)
+                                    .orElse(true)));
+        if (methodLevel) {
+            return ofNullable(findMethodConfiguration(api, method, "enabled"))
+                    .map(Boolean::parseBoolean)
+                    .orElseGet(globalEvaluator);
+        }
+        return globalEvaluator.get();
+    }
+
     private <T extends Annotation> Object findConfiguredValue(final T instance, final Class<T> api,
                                                               final Method sourceMethod,
                                                               final Method proxyMethod, final Object[] args) {
-        final AnnotatedType<?> selected = beanManager.createAnnotatedType(sourceMethod.getDeclaringClass());
-        final boolean methodLevel = selected.getMethods().stream()
-                .filter(it -> it.getJavaMember().getName().equals(sourceMethod.getName()) &&
-                        Arrays.equals(it.getJavaMember().getParameterTypes(), sourceMethod.getParameterTypes()))
-                .anyMatch(it -> it.isAnnotationPresent(api));
-        if (methodLevel) {
-            return ofNullable(findDefaultConfiguration(proxyMethod))
+        final boolean methodLevel = isDefinedAtMethodLevel(sourceMethod, api);
+        final Supplier<Object> classEvaluator = () ->
+            ofNullable(findDefaultConfiguration(proxyMethod, proxyMethod.getName()))
                     .map(v -> coerce(v, proxyMethod.getReturnType()))
-                    .orElseGet(() -> ofNullable(findMethodConfiguration(api, sourceMethod, proxyMethod))
+                    .orElseGet(() -> ofNullable(findClassConfiguration(api, sourceMethod, proxyMethod.getName()))
                             .map(v -> coerce(v, proxyMethod.getReturnType()))
                             .orElseGet(() -> getReflectionConfig(instance, proxyMethod, args)));
+        if (methodLevel) {
+            return ofNullable(findMethodConfiguration(api, sourceMethod, proxyMethod.getName()))
+                        .map(v -> coerce(v, proxyMethod.getReturnType()))
+                        .orElseGet(classEvaluator::get);
         }
-        return ofNullable(findDefaultConfiguration(proxyMethod))
-                .map(v -> coerce(v, proxyMethod.getReturnType()))
-                .orElseGet(() -> ofNullable(findClassConfiguration(api, sourceMethod, proxyMethod))
-                    .map(v -> coerce(v, proxyMethod.getReturnType()))
-                    .orElseGet(() -> getReflectionConfig(instance, proxyMethod, args)));
+        return classEvaluator.get();
+    }
+
+    private <T extends Annotation> boolean isDefinedAtMethodLevel(final Method method, final Class<T> api) {
+        final AnnotatedType<?> selected = beanManager.createAnnotatedType(method.getDeclaringClass());
+        return selected.getMethods().stream()
+                       .filter(it -> it.getJavaMember().getName().equals(method.getName()) &&
+                               Arrays.equals(it.getJavaMember().getParameterTypes(), method.getParameterTypes()))
+                       .anyMatch(it -> it.isAnnotationPresent(api));
     }
 
     private <T extends Annotation> Object getReflectionConfig(final T instance,
@@ -86,18 +113,18 @@ public class ConfigurationMapper {
         }
     }
 
-    private String findDefaultConfiguration(final Method api) {
-        return config.read(String.format("%s/%s", api.getDeclaringClass().getSimpleName(), api.getName()));
+    private String findDefaultConfiguration(final Method api, final String methodName) {
+        return config.read(String.format("%s/%s", api.getDeclaringClass().getSimpleName(), methodName));
     }
 
-    private <T extends Annotation> String findClassConfiguration(final Class<T> api, final Method beanMethod, final Method apiMethod) {
+    private <T extends Annotation> String findClassConfiguration(final Class<T> api, final Method beanMethod, final String apiMethod) {
         return config.read(String.format("%s/%s/%s",
-                beanMethod.getDeclaringClass().getName(), api.getSimpleName(), apiMethod.getName()));
+                beanMethod.getDeclaringClass().getName(), api.getSimpleName(), apiMethod));
     }
 
-    private <T extends Annotation> String findMethodConfiguration(final Class<T> api, final Method beanMethod, final Method apiMethod) {
+    private <T extends Annotation> String findMethodConfiguration(final Class<T> api, final Method beanMethod, final String apiMethod) {
         return config.read(String.format("%s/%s/%s/%s",
-                beanMethod.getDeclaringClass().getName(), beanMethod.getName(), api.getSimpleName(), apiMethod.getName()));
+                beanMethod.getDeclaringClass().getName(), beanMethod.getName(), api.getSimpleName(), apiMethod));
     }
 
     private Object coerce(final String raw, final Class<?> expected) {
