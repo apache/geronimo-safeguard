@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.safeguard.ft.tck;
+package org.apache.safeguard.impl.tck;
 
 import static java.util.stream.Collectors.toList;
 

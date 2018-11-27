@@ -188,6 +188,7 @@ public class SafeguardExtension implements Extension {
     }
 
     void addDefinitionErrors(@Observes final AfterDeploymentValidation validation) {
+        // TODO: we ignore the hierarchy validation for now - inherited @XXX
         beansToValidate.stream()
                        .map(this::validate)
                        .filter(Objects::nonNull)

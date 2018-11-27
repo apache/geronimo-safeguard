@@ -79,18 +79,18 @@ public class ConfigurationMapper {
                                                               final Method sourceMethod,
                                                               final Method proxyMethod, final Object[] args) {
         final boolean methodLevel = isDefinedAtMethodLevel(sourceMethod, api);
-        final Supplier<Object> classEvaluator = () ->
-            ofNullable(findDefaultConfiguration(proxyMethod, proxyMethod.getName()))
-                    .map(v -> coerce(v, proxyMethod.getReturnType()))
-                    .orElseGet(() -> ofNullable(findClassConfiguration(api, sourceMethod, proxyMethod.getName()))
-                            .map(v -> coerce(v, proxyMethod.getReturnType()))
-                            .orElseGet(() -> getReflectionConfig(instance, proxyMethod, args)));
         if (methodLevel) {
-            return ofNullable(findMethodConfiguration(api, sourceMethod, proxyMethod.getName()))
+            return ofNullable(findDefaultConfiguration(proxyMethod, proxyMethod.getName()))
+                    .map(v -> coerce(v, proxyMethod.getReturnType()))
+                    .orElseGet(() -> ofNullable(findMethodConfiguration(api, sourceMethod, proxyMethod.getName()))
                         .map(v -> coerce(v, proxyMethod.getReturnType()))
-                        .orElseGet(classEvaluator::get);
+                        .orElseGet(() -> getReflectionConfig(instance, proxyMethod, args)));
         }
-        return classEvaluator.get();
+        return ofNullable(findDefaultConfiguration(proxyMethod, proxyMethod.getName()))
+                .map(v -> coerce(v, proxyMethod.getReturnType()))
+                .orElseGet(() -> ofNullable(findClassConfiguration(api, sourceMethod, proxyMethod.getName()))
+                        .map(v -> coerce(v, proxyMethod.getReturnType()))
+                        .orElseGet(() -> getReflectionConfig(instance, proxyMethod, args)));
     }
 
     private <T extends Annotation> boolean isDefinedAtMethodLevel(final Method method, final Class<T> api) {

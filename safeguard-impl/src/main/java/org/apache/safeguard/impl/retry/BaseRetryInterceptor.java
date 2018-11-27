@@ -22,7 +22,6 @@ import static java.lang.Math.max;
 import static java.lang.Math.min;
 
 import java.io.Serializable;
-import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
@@ -37,11 +36,14 @@ import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
 import org.apache.safeguard.impl.asynchronous.BaseAsynchronousInterceptor;
+import org.apache.safeguard.impl.cache.Key;
+import org.apache.safeguard.impl.cache.UnwrappedCache;
 import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.interceptor.IdGeneratorInterceptor;
 import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
+import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceDefinitionException;
 import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceException;
 
 public abstract class BaseRetryInterceptor implements Serializable {
@@ -51,16 +53,19 @@ public abstract class BaseRetryInterceptor implements Serializable {
 
     @AroundInvoke
     public Object retry(final InvocationContext context) throws Exception {
-        final Map<Method, Model> models = cache.getModels();
-        Model model = models.get(context.getMethod());
+        final Map<Key, Model> models = cache.getModels();
+        final Key cacheKey = new Key(context, cache.getUnwrapped());
+        Model model = models.get(cacheKey);
         if (model == null) {
             model = cache.create(context);
-            models.putIfAbsent(context.getMethod(), model);
+            final Model existing = models.putIfAbsent(cacheKey, model);
+            if (existing != null) {
+                model = existing;
+            }
         }
         if (model.disabled) {
             return context.proceed();
         }
-
         final Map<String, Object> contextData = context.getContextData();
         final Object id = contextData.get(IdGeneratorInterceptor.class.getName());
         final String contextKey = BaseRetryInterceptor.class.getName() + ".context_" + id;
@@ -88,14 +93,14 @@ public abstract class BaseRetryInterceptor implements Serializable {
                 }
                 return proceed;
             } catch (final Exception re) {
-                handleException(contextData, contextKey, model, re);
+                retryContext = handleException(contextData, contextKey, model, re);
             }
         }
         throw new FaultToleranceException("Inaccessible normally, here for compilation");
     }
 
-    private void handleException(final Map<String, Object> contextData, final String contextKey,
-                                 final Model modelRef, final Exception error) throws Exception {
+    private Context handleException(final Map<String, Object> contextData, final String contextKey,
+                                    final Model modelRef, final Exception error) throws Exception {
         if (CircuitBreakerOpenException.class.isInstance(error)) {
             throw error;
         }
@@ -112,6 +117,7 @@ public abstract class BaseRetryInterceptor implements Serializable {
         }
         modelRef.retries.inc();
         Thread.sleep(modelRef.nextPause());
+        return ctx;
     }
 
     protected abstract void executeFinalCounterAction(Map<String, Object> contextData, FaultToleranceMetrics.Counter counter);
@@ -157,16 +163,19 @@ public abstract class BaseRetryInterceptor implements Serializable {
             this.retries = retries;
 
             if (maxRetries < 0) {
-                throw new FaultToleranceException("max retries can't be negative");
+                throw new FaultToleranceDefinitionException("max retries can't be negative");
             }
             if (delay < 0) {
-                throw new FaultToleranceException("delay can't be negative");
+                throw new FaultToleranceDefinitionException("delay can't be negative");
             }
             if (maxDuration < 0) {
-                throw new FaultToleranceException("max duration can't be negative");
+                throw new FaultToleranceDefinitionException("max duration can't be negative");
             }
             if (jitter < 0) {
-                throw new FaultToleranceException("jitter can't be negative");
+                throw new FaultToleranceDefinitionException("jitter can't be negative");
+            }
+            if (delay > maxDuration) {
+                throw new FaultToleranceDefinitionException("delay can't be < max duration");
             }
         }
 
@@ -192,7 +201,10 @@ public abstract class BaseRetryInterceptor implements Serializable {
     @ApplicationScoped
     public static class Cache {
 
-        private final Map<Method, Model> models = new ConcurrentHashMap<>();
+        private final Map<Key, Model> models = new ConcurrentHashMap<>();
+
+        @Inject
+        private UnwrappedCache unwrappedCache;
 
         @Inject
         private AnnotationFinder finder;
@@ -203,7 +215,7 @@ public abstract class BaseRetryInterceptor implements Serializable {
         @Inject
         private FaultToleranceMetrics metrics;
 
-        public Map<Method, Model> getModels() {
+        public Map<Key, Model> getModels() {
             return models;
         }
 
@@ -222,6 +234,10 @@ public abstract class BaseRetryInterceptor implements Serializable {
                     metrics.counter(metricsNameBase + "callsFailed.total",
                             "The number of times the method was called and ultimately failed after retrying"),
                     metrics.counter(metricsNameBase + "retries.total", "The total number of times the method was retried"));
+        }
+
+        public Map<Class<?>, Class<?>> getUnwrapped() {
+            return unwrappedCache.getUnwrappedCache();
         }
     }
 

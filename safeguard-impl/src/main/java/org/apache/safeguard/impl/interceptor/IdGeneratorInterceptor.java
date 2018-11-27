@@ -21,6 +21,7 @@ package org.apache.safeguard.impl.interceptor;
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -31,6 +32,8 @@ import javax.interceptor.AroundInvoke;
 import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
+import org.apache.safeguard.impl.cache.Key;
+import org.apache.safeguard.impl.cache.UnwrappedCache;
 import org.apache.safeguard.impl.cdi.SafeguardEnabled;
 import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 
@@ -40,8 +43,6 @@ import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 @SafeguardEnabled
 @Priority(Interceptor.Priority.PLATFORM_BEFORE)
 public class IdGeneratorInterceptor implements Serializable {
-    private static final String KEY = IdGeneratorInterceptor.class.getName();
-
     private final AtomicLong idGenerator = new AtomicLong();
 
     @Inject
@@ -49,14 +50,17 @@ public class IdGeneratorInterceptor implements Serializable {
 
     @AroundInvoke
     public Object generateId(final InvocationContext context) throws Exception {
-        final Object old = context.getContextData().get(KEY);
-        context.getContextData().put(IdGeneratorInterceptor.class.getName(), idGenerator.incrementAndGet());
+        final long id = idGenerator.incrementAndGet();
+        context.getContextData().put(IdGeneratorInterceptor.class.getName(), id);
 
-        final Map<Method, Counters> counters = cache.getCounters();
-        Counters methodCounters = counters.get(context.getMethod());
+        final Map<Key, Counters> counters = cache.getCounters();
+        final Key key = new Key(context, cache.getUnwrappedCache().getUnwrappedCache());
+        // todo: ?context.getContextData().put(IdGeneratorInterceptor.class.getName() + ".key_" + id, key);
+
+        Counters methodCounters = counters.get(key);
         if (methodCounters == null) {
             methodCounters = cache.create(context.getMethod());
-            final Counters existing = counters.putIfAbsent(context.getMethod(), methodCounters);
+            final Counters existing = counters.putIfAbsent(key, methodCounters);
             if (existing != null) {
                 methodCounters = existing;
             }
@@ -64,7 +68,22 @@ public class IdGeneratorInterceptor implements Serializable {
 
         methodCounters.total.inc();
         try {
-            return context.proceed();
+            final Object proceed = context.proceed();
+            if (CompletionStage.class.isInstance(proceed)) {  // todo: integrate with futures
+                final Counters countersRef = methodCounters;
+                final CompletionStage<?> completionStage = CompletionStage.class.cast(proceed);
+                return completionStage.exceptionally(e -> {
+                    countersRef.failed.inc();
+                    if (RuntimeException.class.isInstance(e)) {
+                        throw RuntimeException.class.cast(e);
+                    }
+                    if (Error.class.isInstance(e)) {
+                        throw Error.class.cast(e);
+                    }
+                    throw new IllegalStateException(e);
+                });
+            }
+            return proceed;
         } catch (final Exception | Error e) {
             methodCounters.failed.inc();
             throw e;
@@ -83,12 +102,19 @@ public class IdGeneratorInterceptor implements Serializable {
 
     @ApplicationScoped
     public static class Cache {
-        private final Map<Method, Counters> counters = new ConcurrentHashMap<>();
+        private final Map<Key, Counters> counters = new ConcurrentHashMap<>();
 
         @Inject
         private FaultToleranceMetrics metrics;
 
-        public Map<Method, Counters> getCounters() {
+        @Inject
+        private UnwrappedCache unwrappedCache;
+
+        public UnwrappedCache getUnwrappedCache() {
+            return unwrappedCache;
+        }
+
+        public Map<Key, Counters> getCounters() {
             return counters;
         }
 

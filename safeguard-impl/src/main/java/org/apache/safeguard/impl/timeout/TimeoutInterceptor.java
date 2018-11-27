@@ -21,7 +21,6 @@ package org.apache.safeguard.impl.timeout;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 import java.io.Serializable;
-import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -37,6 +36,8 @@ import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
+import org.apache.safeguard.impl.cache.Key;
+import org.apache.safeguard.impl.cache.UnwrappedCache;
 import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.customizable.Safeguard;
 import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
@@ -56,11 +57,12 @@ public class TimeoutInterceptor implements Serializable {
 
     @AroundInvoke
     public Object withTimeout(final InvocationContext context) throws Exception {
-        final Map<Method, Model> timeouts = cache.getTimeouts();
-        Model model = timeouts.get(context.getMethod());
+        final Map<Key, Model> timeouts = cache.getTimeouts();
+        final Key key = new Key(context, cache.getUnwrappedCache().getUnwrappedCache());
+        Model model = timeouts.get(key);
         if (model == null) {
             model = cache.create(context);
-            timeouts.putIfAbsent(context.getMethod(), model);
+            timeouts.putIfAbsent(key, model);
         }
         if (model.disabled) {
             return context.proceed();
@@ -122,7 +124,7 @@ public class TimeoutInterceptor implements Serializable {
 
     @ApplicationScoped
     public static class Cache {
-        private final Map<Method, Model> timeouts = new ConcurrentHashMap<>();
+        private final Map<Key, Model> timeouts = new ConcurrentHashMap<>();
 
         @Inject
         private AnnotationFinder finder;
@@ -133,7 +135,14 @@ public class TimeoutInterceptor implements Serializable {
         @Inject
         private ConfigurationMapper mapper;
 
-        public Map<Method, Model> getTimeouts() {
+        @Inject
+        private UnwrappedCache unwrappedCache;
+
+        public UnwrappedCache getUnwrappedCache() {
+            return unwrappedCache;
+        }
+
+        public Map<Key, Model> getTimeouts() {
             return timeouts;
         }
 

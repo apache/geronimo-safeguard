@@ -21,9 +21,13 @@ package org.apache.safeguard.impl.annotation;
 import static java.util.Optional.ofNullable;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.Set;
 
 import javax.enterprise.context.ApplicationScoped;
+import javax.enterprise.inject.spi.AnnotatedMethod;
+import javax.enterprise.inject.spi.AnnotatedType;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.inject.Inject;
 import javax.interceptor.InvocationContext;
@@ -33,21 +37,42 @@ public class AnnotationFinder {
     @Inject
     private BeanManager manager;
 
+    public <T extends Annotation> T findAnnotation(final Class<T> type, final AnnotatedType<?> declaringClass,
+                                                   final Method method) {
+        final Set<AnnotatedMethod<?>> methods = (Set<AnnotatedMethod<?>>) declaringClass.getMethods();
+        // first the methods of the declaring class, then the class then the other methods (parent)
+        return methods.stream()
+                      .filter(it -> declaringClass.equals(it.getDeclaringType()) && matches(method, it))
+                      .findFirst()
+                      .map(m -> m.getAnnotation(type))
+                      .orElseGet(() -> ofNullable(declaringClass.getAnnotation(type))
+                      .orElseGet(() -> methods.stream()
+                      .filter(it -> !declaringClass.equals(it.getDeclaringType()) && matches(method, it))
+                      .findFirst()
+                      .map(m -> m.getAnnotation(type))
+                      .orElseGet(() -> getByReflection(type, declaringClass, method))));
+    }
+
+    private boolean matches(final Method method, final AnnotatedMethod<?> it) {
+        return it.getJavaMember().getName().equals(method.getName()) &&
+                Arrays.equals(it.getJavaMember().getParameterTypes(), method.getParameterTypes());
+    }
+
+    private <T extends Annotation> T getByReflection(final Class<T> type,
+                                                     final AnnotatedType<?> declaringClass,
+                                                     final Method method) {
+        return ofNullable(method.getAnnotation(type))
+                .orElseGet(() -> declaringClass.getAnnotation(type));
+    }
+
     public <T extends Annotation> T findAnnotation(final Class<T> type, final InvocationContext context) {
         // normally we should use target but validations require the fallback
-        final Class<?> targetClass = ofNullable(context.getTarget())
+        Class<?> target = ofNullable(context.getTarget())
                 .map(Object::getClass)
-                .orElseGet(() -> Class.class.cast(type));
-        Class<?> target = targetClass;
+                .orElseGet(() -> Class.class.cast(context.getMethod().getDeclaringClass()));
         while (target.getName().contains("$$")) {
             target = target.getSuperclass();
         }
-        return manager.createAnnotatedType(target).getMethods().stream()
-                .filter(it -> it.getJavaMember().getName().equals(context.getMethod().getName()) &&
-                        Arrays.equals(it.getJavaMember().getParameterTypes(), context.getMethod().getParameterTypes()))
-                .findFirst()
-                .map(m -> m.getAnnotation(type))
-                .orElseGet(() -> ofNullable(context.getMethod().getAnnotation(type))
-                        .orElseGet(() -> targetClass.getAnnotation(type)));
+        return findAnnotation(type, manager.createAnnotatedType(target), context.getMethod());
     }
 }

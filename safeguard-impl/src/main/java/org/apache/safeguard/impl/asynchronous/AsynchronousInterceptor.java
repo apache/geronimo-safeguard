@@ -18,7 +18,6 @@
  */
 package org.apache.safeguard.impl.asynchronous;
 
-import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -30,6 +29,8 @@ import javax.interceptor.AroundInvoke;
 import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
+import org.apache.safeguard.impl.cache.Key;
+import org.apache.safeguard.impl.cache.UnwrappedCache;
 import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.customizable.Safeguard;
 import org.apache.safeguard.impl.interceptor.IdGeneratorInterceptor;
@@ -49,11 +50,12 @@ public class AsynchronousInterceptor extends BaseAsynchronousInterceptor {
 
     @AroundInvoke
     public Object async(final InvocationContext context) throws Exception {
-        final Map<Method, Boolean> models = cache.getEnabled();
-        Boolean enabled = models.get(context.getMethod());
+        final Map<Key, Boolean> models = cache.getEnabled();
+        final Key cacheKey = new Key(context, cache.getUnwrappedCache().getUnwrappedCache());
+        Boolean enabled = models.get(cacheKey);
         if (enabled == null) {
             enabled = cache.getMapper().isEnabled(context.getMethod(), Asynchronous.class);
-            models.putIfAbsent(context.getMethod(), enabled);
+            models.putIfAbsent(cacheKey, enabled);
         }
         if (!enabled) {
             return context.proceed();
@@ -68,7 +70,7 @@ public class AsynchronousInterceptor extends BaseAsynchronousInterceptor {
 
     @ApplicationScoped
     public static class Cache {
-        private final Map<Method, Boolean> enabled = new ConcurrentHashMap<>();
+        private final Map<Key, Boolean> enabled = new ConcurrentHashMap<>();
 
         @Inject
         @Safeguard
@@ -76,6 +78,13 @@ public class AsynchronousInterceptor extends BaseAsynchronousInterceptor {
 
         @Inject
         private ConfigurationMapper mapper;
+
+        @Inject
+        private UnwrappedCache unwrappedCache;
+
+        public UnwrappedCache getUnwrappedCache() {
+            return unwrappedCache;
+        }
 
         public ConfigurationMapper getMapper() {
             return mapper;
@@ -85,7 +94,7 @@ public class AsynchronousInterceptor extends BaseAsynchronousInterceptor {
             return executor;
         }
 
-        public Map<Method, Boolean> getEnabled() {
+        public Map<Key, Boolean> getEnabled() {
             return enabled;
         }
     }

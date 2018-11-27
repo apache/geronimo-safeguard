@@ -41,6 +41,8 @@ import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
 import org.apache.safeguard.impl.asynchronous.BaseAsynchronousInterceptor;
+import org.apache.safeguard.impl.cache.Key;
+import org.apache.safeguard.impl.cache.UnwrappedCache;
 import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.interceptor.IdGeneratorInterceptor;
 import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
@@ -58,11 +60,12 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
 
     @AroundInvoke
     public Object bulkhead(final InvocationContext context) throws Exception {
-        final Map<Method, Model> models = cache.getModels();
-        Model model = models.get(context.getMethod());
+        final Map<Key, Model> models = cache.getModels();
+        final Key key = new Key(context, cache.getUnwrappedCache().getUnwrappedCache());
+        Model model = models.get(key);
         if (model == null) {
             model = cache.create(context);
-            final Model existing = models.putIfAbsent(context.getMethod(), model);
+            final Model existing = models.putIfAbsent(key, model);
             if (existing != null) {
                 model = existing;
             } else {
@@ -237,7 +240,7 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
 
     @ApplicationScoped
     public static class Cache {
-        private final Map<Method, Model> models = new ConcurrentHashMap<>();
+        private final Map<Key, Model> models = new ConcurrentHashMap<>();
 
         @Inject
         private AnnotationFinder finder;
@@ -248,12 +251,19 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
         @Inject
         private ConfigurationMapper configurationMapper;
 
+        @Inject
+        private UnwrappedCache unwrappedCache;
+
+        public UnwrappedCache getUnwrappedCache() {
+            return unwrappedCache;
+        }
+
         @PreDestroy
         private void destroy() {
             models.values().stream().filter(m -> m.pool != null).forEach(m -> m.pool.shutdownNow());
         }
 
-        public Map<Method, Model> getModels() {
+        public Map<Key, Model> getModels() {
             return models;
         }
 

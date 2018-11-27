@@ -25,11 +25,14 @@
     </packages>
     -->
     <classes>
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.ConfigTest" />
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.invalidParameters.InvalidRetryDelayDurationTest" />
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.illegalConfig.IncompatibleFallbackTest" />
+      <class name="org.eclipse.microprofile.fault.tolerance.tck.visibility.retry.RetryVisibilityTest">
+        <methods>
+
+        </methods>
+      </class>
+      <!--
       <class name="org.eclipse.microprofile.fault.tolerance.tck.metrics.CircuitBreakerMetricTest" />
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.visibility.retry.RetryVisibilityTest" />
+      -->
     </classes>
   </test>
 </suite>

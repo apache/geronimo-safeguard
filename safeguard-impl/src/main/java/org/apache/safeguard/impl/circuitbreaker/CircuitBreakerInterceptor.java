@@ -21,7 +21,6 @@ package org.apache.safeguard.impl.circuitbreaker;
 import static java.util.Arrays.asList;
 
 import java.io.Serializable;
-import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -36,6 +35,8 @@ import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
+import org.apache.safeguard.impl.cache.Key;
+import org.apache.safeguard.impl.cache.UnwrappedCache;
 import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
@@ -51,11 +52,12 @@ public class CircuitBreakerInterceptor implements Serializable {
 
     @AroundInvoke
     public Object ifNotOpen(final InvocationContext context) throws Exception {
-        final Map<Method, CircuitBreakerImpl> circuitBreakers = cache.getCircuitBreakers();
-        CircuitBreakerImpl circuitBreaker = circuitBreakers.get(context.getMethod());
+        final Map<Key, CircuitBreakerImpl> circuitBreakers = cache.getCircuitBreakers();
+        final Key key = new Key(context, cache.getUnwrappedCache().getUnwrappedCache());
+        CircuitBreakerImpl circuitBreaker = circuitBreakers.get(key);
         if (circuitBreaker == null) {
             circuitBreaker = cache.create(context);
-            final CircuitBreakerImpl existing = circuitBreakers.putIfAbsent(context.getMethod(), circuitBreaker);
+            final CircuitBreakerImpl existing = circuitBreakers.putIfAbsent(key, circuitBreaker);
             if (existing != null) {
                 circuitBreaker = existing;
             }
@@ -164,7 +166,7 @@ public class CircuitBreakerInterceptor implements Serializable {
 
     @ApplicationScoped
     public static class Cache {
-        private final Map<Method, CircuitBreakerImpl> circuitBreakers = new ConcurrentHashMap<>();
+        private final Map<Key, CircuitBreakerImpl> circuitBreakers = new ConcurrentHashMap<>();
 
         @Inject
         private AnnotationFinder finder;
@@ -175,7 +177,14 @@ public class CircuitBreakerInterceptor implements Serializable {
         @Inject
         private FaultToleranceMetrics metrics;
 
-        public Map<Method, CircuitBreakerImpl> getCircuitBreakers() {
+        @Inject
+        private UnwrappedCache unwrappedCache;
+
+        public UnwrappedCache getUnwrappedCache() {
+            return unwrappedCache;
+        }
+
+        public Map<Key, CircuitBreakerImpl> getCircuitBreakers() {
             return circuitBreakers;
         }
 

@@ -44,6 +44,8 @@ import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
 import org.apache.safeguard.impl.annotation.AnnotationFinder;
+import org.apache.safeguard.impl.cache.Key;
+import org.apache.safeguard.impl.cache.UnwrappedCache;
 import org.apache.safeguard.impl.cdi.SafeguardExtension;
 import org.apache.safeguard.impl.config.ConfigurationMapper;
 import org.apache.safeguard.impl.metrics.FaultToleranceMetrics;
@@ -61,11 +63,12 @@ public class FallbackInterceptor implements Serializable {
 
     @AroundInvoke
     public Object withFallback(final InvocationContext context) {
-        final Map<Method, FallbackHandler<?>> handlers = cache.getHandlers();
-        FallbackHandler<?> handler = handlers.get(context.getMethod());
+        final Map<Key, FallbackHandler<?>> handlers = cache.getHandlers();
+        final Key key = new Key(context, cache.getUnwrappedCache().getUnwrappedCache());
+        FallbackHandler<?> handler = handlers.get(key);
         if (handler == null) {
             handler = cache.create(context);
-            handlers.putIfAbsent(context.getMethod(), handler);
+            handlers.putIfAbsent(key, handler);
         }
         try {
             return context.proceed();
@@ -96,7 +99,7 @@ public class FallbackInterceptor implements Serializable {
 
     @ApplicationScoped
     public static class Cache {
-        private final Map<Method, FallbackHandler<?>> handlers = new ConcurrentHashMap<>();
+        private final Map<Key, FallbackHandler<?>> handlers = new ConcurrentHashMap<>();
 
         @Inject
         private AnnotationFinder finder;
@@ -113,14 +116,21 @@ public class FallbackInterceptor implements Serializable {
         @Inject
         private ConfigurationMapper mapper;
 
+        @Inject
+        private UnwrappedCache unwrappedCache;
+
         private final Collection<CreationalContext<?>> contexts = new ArrayList<>();
+
+        public UnwrappedCache getUnwrappedCache() {
+            return unwrappedCache;
+        }
 
         @PreDestroy
         private void release() {
             contexts.forEach(CreationalContext::release);
         }
 
-        public Map<Method, FallbackHandler<?>> getHandlers() {
+        public Map<Key, FallbackHandler<?>> getHandlers() {
             return handlers;
         }
 
@@ -153,7 +163,11 @@ public class FallbackInterceptor implements Serializable {
                         .filter(it -> FallbackHandler.class == it.getRawType())
                         .findFirst()
                         .filter(it -> it.getActualTypeArguments().length == 1)
-                        .map(it -> extension.toClass(context.getMethod().getReturnType()).isAssignableFrom(extension.toClass(it.getActualTypeArguments()[0])))
+                        .filter(it -> {
+                            final Class<?> expected = extension.toClass(context.getMethod().getReturnType());
+                            final Class<?> actual = extension.toClass(it.getActualTypeArguments()[0]);
+                            return expected.isAssignableFrom(actual);
+                        })
                         .orElseThrow(() -> new FaultToleranceDefinitionException("handler does not match method: " + context.getMethod()));
                 final Set<Bean<?>> beans = beanManager.getBeans(value);
                 final Bean<?> handlerBean = beanManager.resolve(beans);
