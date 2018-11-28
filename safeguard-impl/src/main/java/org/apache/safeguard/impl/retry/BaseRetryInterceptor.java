@@ -23,6 +23,7 @@ import static java.lang.Math.min;
 
 import java.io.Serializable;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
@@ -236,7 +237,7 @@ public abstract class BaseRetryInterceptor implements Serializable {
                     metrics.counter(metricsNameBase + "retries.total", "The total number of times the method was retried"));
         }
 
-        public Map<Class<?>, Class<?>> getUnwrapped() {
+        public Map<Class<?>, Optional<Class<?>>> getUnwrapped() {
             return unwrappedCache.getUnwrappedCache();
         }
     }

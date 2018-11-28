@@ -23,6 +23,7 @@ import static java.util.Optional.ofNullable;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.Set;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -32,25 +33,94 @@ import javax.enterprise.inject.spi.BeanManager;
 import javax.inject.Inject;
 import javax.interceptor.InvocationContext;
 
+import org.apache.safeguard.impl.cache.UnwrappedCache;
+
 @ApplicationScoped
 public class AnnotationFinder {
     @Inject
     private BeanManager manager;
 
+    @Inject
+    private UnwrappedCache unwrappedCache;
+
     public <T extends Annotation> T findAnnotation(final Class<T> type, final AnnotatedType<?> declaringClass,
                                                    final Method method) {
         final Set<AnnotatedMethod<?>> methods = (Set<AnnotatedMethod<?>>) declaringClass.getMethods();
-        // first the methods of the declaring class, then the class then the other methods (parent)
+
+        // first test on the class method directly
+        final Optional<AnnotatedMethod<?>> classMethod = getDirectMethod(declaringClass, method, methods);
+        if (classMethod.isPresent()) {
+            final T methodAnnotation = getMethodAnnotation(type, classMethod);
+            if (methodAnnotation != null) {
+                return methodAnnotation;
+            }
+        } else { // then on the parent methods
+            final Optional<AnnotatedMethod<?>> parentMethod = getParentMethod(declaringClass, method, methods);
+            final T annotation = getMethodAnnotation(type, parentMethod);
+            if (annotation != null) {
+                return annotation;
+            }
+        }
+        { // then on the class
+            final T annotation = getFromDirectClass(type, declaringClass);
+            if (annotation != null) {
+                return annotation;
+            }
+        }
+        { // then on the parent class
+            final T annotation = getFromParentClass(type, declaringClass);
+            if (annotation != null) {
+                return annotation;
+            }
+        }
+        // just a fallback, we should never end up here
+        return getByReflection(type, declaringClass, method);
+    }
+
+    private <T extends Annotation> T getFromDirectClass(final Class<T> type, final AnnotatedType<?> declaringClass) {
+        // TODO: align on CDI is the spec does - TCK rule
+        final T annotation = declaringClass.getJavaClass().getDeclaredAnnotation(type);
+        if (annotation != null) {
+            return annotation;
+        }
+        return null;
+    }
+
+    private Optional<AnnotatedMethod<?>> getParentMethod(final AnnotatedType<?> declaringClass, final Method method,
+                                                         final Set<AnnotatedMethod<?>> methods) {
         return methods.stream()
-                      .filter(it -> declaringClass.equals(it.getDeclaringType()) && matches(method, it))
-                      .findFirst()
-                      .map(m -> m.getAnnotation(type))
-                      .orElseGet(() -> ofNullable(declaringClass.getAnnotation(type))
-                      .orElseGet(() -> methods.stream()
-                      .filter(it -> !declaringClass.equals(it.getDeclaringType()) && matches(method, it))
-                      .findFirst()
-                      .map(m -> m.getAnnotation(type))
-                      .orElseGet(() -> getByReflection(type, declaringClass, method))));
+            .filter(it -> !declaringClass.getJavaClass().equals(it.getJavaMember().getDeclaringClass()) && matches(method, it))
+            .findFirst();
+    }
+
+    private <T extends Annotation> T getMethodAnnotation(final Class<T> type, final Optional<AnnotatedMethod<?>> classMethod) {
+        if (classMethod.isPresent()) {
+            // TODO: align on CDI is the spec does - TCK rule
+            final T annotation = classMethod.orElseThrow(IllegalArgumentException::new).getJavaMember().getDeclaredAnnotation(type);
+            if (annotation != null) {
+                return annotation;
+            }
+        }
+        return null;
+    }
+
+    private Optional<AnnotatedMethod<?>> getDirectMethod(final AnnotatedType<?> declaringClass, final Method method,
+                                                         final Set<AnnotatedMethod<?>> methods) {
+        return methods.stream()
+            .filter(it -> declaringClass.getJavaClass().equals(it.getJavaMember().getDeclaringClass()) && matches(method, it))
+            .findFirst();
+    }
+
+    private <T extends Annotation> T getFromParentClass(final Class<T> type, final AnnotatedType<?> declaringClass) {
+        final Class<?> parent = declaringClass.getJavaClass().getSuperclass();
+        if (parent != null && parent != Object.class) {
+            final AnnotatedType<?> annotatedType = manager.createAnnotatedType(parent);
+            final T annotation = annotatedType.getAnnotation(type);
+            if (annotation != null) {
+                return annotation;
+            }
+        }
+        return null;
     }
 
     private boolean matches(final Method method, final AnnotatedMethod<?> it) {
@@ -67,12 +137,10 @@ public class AnnotationFinder {
 
     public <T extends Annotation> T findAnnotation(final Class<T> type, final InvocationContext context) {
         // normally we should use target but validations require the fallback
-        Class<?> target = ofNullable(context.getTarget())
-                .map(Object::getClass)
+        // todo: don't rely on context but AnnotatedType?
+        final Class<?> target = ofNullable(context.getTarget())
+                .flatMap(it -> UnwrappedCache.Tool.unwrap(unwrappedCache.getUnwrappedCache(), it))
                 .orElseGet(() -> Class.class.cast(context.getMethod().getDeclaringClass()));
-        while (target.getName().contains("$$")) {
-            target = target.getSuperclass();
-        }
         return findAnnotation(type, manager.createAnnotatedType(target), context.getMethod());
     }
 }

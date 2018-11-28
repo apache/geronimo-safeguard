@@ -18,10 +18,6 @@
  */
 package org.apache.safeguard.impl.cache;
 
-import static java.util.Optional.empty;
-import static java.util.Optional.of;
-import static java.util.Optional.ofNullable;
-
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.Objects;
@@ -34,8 +30,10 @@ public class Key {
     private final Method method;
     private final int hash;
 
-    public Key(final InvocationContext context, final Map<Class<?>, Class<?>> unwrappedCache) {
-        this(unwrap(unwrappedCache, context.getTarget()).orElseGet(() -> context.getMethod().getDeclaringClass()), context.getMethod());
+    public Key(final InvocationContext context, final Map<Class<?>, Optional<Class<?>>> unwrappedCache) {
+        this(UnwrappedCache.Tool.unwrap(unwrappedCache, context.getTarget())
+                                .orElseGet(() -> context.getMethod().getDeclaringClass()),
+                context.getMethod());
     }
 
     public Key(final Class<?> declaringClass, final Method method) {
@@ -59,26 +57,5 @@ public class Key {
     @Override
     public int hashCode() {
         return hash;
-    }
-
-    private static Optional<Class<?>> unwrap(final Map<Class<?>, Class<?>> unwrappedCache,
-                                             final Object instance) {
-        if (instance == null) {
-            return empty();
-        }
-        final Class<?> raw = instance.getClass();
-        final Class<?> existing = unwrappedCache.get(raw);
-        if (existing != null) {
-            return of(existing);
-        }
-        Class<?> target = raw;
-        while (target.getName().contains("$$")) {
-            target = target.getSuperclass();
-        }
-        if (target == Object.class) {
-            return empty();
-        }
-        unwrappedCache.put(raw, target);
-        return ofNullable(target);
     }
 }

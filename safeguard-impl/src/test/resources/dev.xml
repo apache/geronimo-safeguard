@@ -19,17 +19,12 @@
 <suite name="Dev TCK Run" verbose="2" configfailurepolicy="continue" >
   <test name="TCK Run">
     <!-- all TCK -->
-    <!--
     <packages>
       <package name="org.eclipse.microprofile.fault.tolerance.tck.*" />
     </packages>
+    <!--
+    to debug a single test (class or method), comment packages and add <classes>
     -->
-    <classes>
-      <!--
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.config.ConfigPropertyGlobalVsClassVsMethodTest" />
-      <class name="org.eclipse.microprofile.fault.tolerance.tck.visibility.retry.RetryVisibilityTest" />
-      -->
-    </classes>
   </test>
 </suite>
 

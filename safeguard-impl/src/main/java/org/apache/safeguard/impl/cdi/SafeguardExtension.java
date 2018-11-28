@@ -200,7 +200,7 @@ public class SafeguardExtension implements Extension {
         return CDI.current().select(cache).get();
     }
 
-    private Throwable validate(final Annotated annotated) {
+    private Throwable validate(final Annotated annotated) { // todo: do we want to cache here too or save some memory
         { // timeout
             final Throwable throwable = validate(Timeout.class, annotated, context -> {
                 if (timeoutCache == null) {

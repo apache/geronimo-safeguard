@@ -80,11 +80,11 @@ public class ConfigurationMapper {
                                                               final Method proxyMethod, final Object[] args) {
         final boolean methodLevel = isDefinedAtMethodLevel(sourceMethod, api);
         if (methodLevel) {
-            return ofNullable(findDefaultConfiguration(proxyMethod, proxyMethod.getName()))
+            return ofNullable(findMethodConfiguration(api, sourceMethod, proxyMethod.getName()))
                     .map(v -> coerce(v, proxyMethod.getReturnType()))
-                    .orElseGet(() -> ofNullable(findMethodConfiguration(api, sourceMethod, proxyMethod.getName()))
-                        .map(v -> coerce(v, proxyMethod.getReturnType()))
-                        .orElseGet(() -> getReflectionConfig(instance, proxyMethod, args)));
+                    .orElseGet(() -> ofNullable(findDefaultConfiguration(proxyMethod, proxyMethod.getName()))
+                    .map(v -> coerce(v, proxyMethod.getReturnType()))
+                    .orElseGet(() -> getReflectionConfig(instance, proxyMethod, args)));
         }
         return ofNullable(findDefaultConfiguration(proxyMethod, proxyMethod.getName()))
                 .map(v -> coerce(v, proxyMethod.getReturnType()))
@@ -98,6 +98,7 @@ public class ConfigurationMapper {
         return selected.getMethods().stream()
                        .filter(it -> it.getJavaMember().getName().equals(method.getName()) &&
                                Arrays.equals(it.getJavaMember().getParameterTypes(), method.getParameterTypes()))
+                       .filter(it -> selected.getJavaClass().equals(it.getJavaMember().getDeclaringClass())) // broken tck?
                        .anyMatch(it -> it.isAnnotationPresent(api));
     }
 
