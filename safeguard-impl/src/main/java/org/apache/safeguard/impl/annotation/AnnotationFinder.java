@@ -78,8 +78,7 @@ public class AnnotationFinder {
     }
 
     private <T extends Annotation> T getFromDirectClass(final Class<T> type, final AnnotatedType<?> declaringClass) {
-        // TODO: align on CDI is the spec does - TCK rule
-        final T annotation = declaringClass.getJavaClass().getDeclaredAnnotation(type);
+        final T annotation = declaringClass.getAnnotation(type);
         if (annotation != null) {
             return annotation;
         }
@@ -95,8 +94,7 @@ public class AnnotationFinder {
 
     private <T extends Annotation> T getMethodAnnotation(final Class<T> type, final Optional<AnnotatedMethod<?>> classMethod) {
         if (classMethod.isPresent()) {
-            // TODO: align on CDI is the spec does - TCK rule
-            final T annotation = classMethod.orElseThrow(IllegalArgumentException::new).getJavaMember().getDeclaredAnnotation(type);
+            final T annotation = classMethod.orElseThrow(IllegalArgumentException::new).getAnnotation(type);
             if (annotation != null) {
                 return annotation;
             }
