@@ -117,7 +117,10 @@ public abstract class BaseRetryInterceptor implements Serializable {
             throw error;
         }
         modelRef.retries.inc();
-        Thread.sleep(modelRef.nextPause());
+        final long pause = modelRef.nextPause();
+        if (pause > 0) {
+            Thread.sleep(pause);
+        }
         return ctx;
     }
 
@@ -195,7 +198,7 @@ public abstract class BaseRetryInterceptor implements Serializable {
         private long nextPause() {
             final ThreadLocalRandom random = ThreadLocalRandom.current();
             return TimeUnit.NANOSECONDS
-                    .toMillis(min(maxDuration, max(0, ((random.nextBoolean() ? 1 : -1) * delay) + random.nextLong(jitter))));
+                    .toMillis(min(maxDuration, max(0, ((random.nextBoolean() ? 1 : -1) * delay) + (jitter == 0 ? 0 : random.nextLong(jitter)))));
         }
     }
 
