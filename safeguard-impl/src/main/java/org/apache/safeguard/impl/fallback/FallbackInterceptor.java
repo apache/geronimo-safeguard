@@ -180,15 +180,10 @@ public class FallbackInterceptor implements Serializable {
                 handler = fallbackHandler;
             } else {
                 try {
-                    final Method fallbackMethod = ofNullable(context.getTarget())
-                            .map(Object::getClass)
-                            .orElseGet(() -> Class.class.cast(context.getMethod().getDeclaringClass()))
-                            .getMethod(method, context.getMethod().getParameterTypes());
-                    if (!extension.toClass(context.getMethod()
-                                                  .getReturnType())
-                                  .isAssignableFrom(extension.toClass(fallbackMethod.getReturnType())) || !Arrays.equals(
-                            context.getMethod()
-                                   .getParameterTypes(), fallbackMethod.getParameterTypes())) {
+                    final Method fallbackMethod = getFallbackMethod(context, method);
+                    if (!extension.toClass(context.getMethod().getReturnType())
+                                .isAssignableFrom(extension.toClass(fallbackMethod.getReturnType())) ||
+                            !Arrays.equals(context.getMethod().getParameterTypes(), fallbackMethod.getParameterTypes())) {
                         throw new FaultToleranceDefinitionException("handler method does not match method: " + context.getMethod());
                     }
                     if (!fallbackMethod.isAccessible()) {
@@ -224,6 +219,30 @@ public class FallbackInterceptor implements Serializable {
                 counter.inc();
                 return handler.handle(context12);
             };
+        }
+
+        private Method getFallbackMethod(final InvocationContext context, final String method) throws NoSuchMethodException {
+            final Class<?> rootClass = ofNullable(context.getTarget())
+                    .map(Object::getClass)
+                    .orElseGet(() -> Class.class.cast(context.getMethod().getDeclaringClass()));
+            Class<?> current = rootClass;
+            while (current != null) {
+                try {
+                    return current.getDeclaredMethod(method, context.getMethod().getParameterTypes());
+                } catch (final NoSuchMethodException nsme) {
+                    current = current.getSuperclass();
+                }
+            }
+            return Stream.of(rootClass.getInterfaces())
+                    .flatMap(c -> {
+                        try {
+                            return Stream.of(c.getDeclaredMethod(method, context.getMethod().getParameterTypes()));
+                        } catch (final NoSuchMethodException nsme) {
+                            return Stream.empty();
+                        }
+                    })
+                    .findFirst()
+                    .orElseThrow(() -> new NoSuchMethodException(method + " as fallback for " + context.getMethod()));
         }
     }
 

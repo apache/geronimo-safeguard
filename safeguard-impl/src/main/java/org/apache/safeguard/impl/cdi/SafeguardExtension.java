@@ -77,6 +77,7 @@ import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Fallback;
 import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.faulttolerance.Timeout;
+import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceDefinitionException;
 
 public class SafeguardExtension implements Extension {
     private boolean foundExecutor;
@@ -284,10 +285,12 @@ public class SafeguardExtension implements Extension {
         final AnnotatedType<?> annotatedType = AnnotatedType.class.cast(type);
         try {
             annotatedType.getMethods().stream()
-                         .filter(it -> classHasMarker || it.isAnnotationPresent(marker))
-                         .map(m -> new MockInvocationContext(m.getJavaMember()))
-                         .forEach(contextConsumer);
+                    .filter(it -> classHasMarker || it.isAnnotationPresent(marker))
+                    .map(m -> new MockInvocationContext(m.getJavaMember()))
+                    .forEach(contextConsumer);
             return null;
+        } catch (final FaultToleranceDefinitionException ftde) {
+            throw ftde;
         } catch (final RuntimeException re) {
             return new DefinitionException(re);
         }

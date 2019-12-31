@@ -40,9 +40,9 @@ import org.apache.safeguard.impl.interceptor.IdGeneratorInterceptor;
 import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceDefinitionException;
 
 public abstract class BaseAsynchronousInterceptor implements Serializable {
-    protected abstract Executor getExecutor(InvocationContext context);
+    public abstract Executor getExecutor(InvocationContext context);
 
-    protected Object around(final InvocationContext context) {
+    protected Object around(final InvocationContext context, final String id) {
         final Class<?> returnType = context.getMethod().getReturnType();
         if (CompletionStage.class.isAssignableFrom(returnType)) {
             final ExtendedCompletableFuture<Object> future = newCompletableFuture(context);
@@ -55,19 +55,19 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
                         future.after();
                         if (e != null) {
                             ofNullable(getErrorHandler(context.getContextData()))
-                                .map(eh -> {
-                                    if (Exception.class.isInstance(e)) {
-                                        try {
-                                            eh.apply(Exception.class.cast(e));
-                                        } catch (final Exception e1) {
-                                            future.completeExceptionally(e1);
+                                    .map(eh -> {
+                                        if (Exception.class.isInstance(e)) {
+                                            try {
+                                                eh.apply(Exception.class.cast(e));
+                                            } catch (final Exception e1) {
+                                                future.completeExceptionally(e1);
+                                            }
+                                        } else {
+                                            future.completeExceptionally(e);
                                         }
-                                    } else {
-                                        future.completeExceptionally(e);
-                                    }
-                                    return true;
-                                })
-                                .orElseGet(() -> future.completeExceptionally(e));
+                                        return true;
+                                    })
+                                    .orElseGet(() -> future.completeExceptionally(e));
                         } else {
                             future.complete(r);
                         }
@@ -81,18 +81,8 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
         }
         if (Future.class.isAssignableFrom(returnType)) {
             final FutureWrapper<Object> facade = newFuture(context, context.getContextData());
-            getExecutor(context).execute(() -> {
-                final Object proceed;
-                try {
-                    facade.before();
-                    proceed = context.proceed();
-                    facade.setDelegate(Future.class.cast(proceed));
-                } catch (final Exception e) {
-                    final CompletableFuture<Object> failingFuture = new CompletableFuture<>();
-                    failingFuture.completeExceptionally(e);
-                    facade.setDelegate(failingFuture);
-                }
-            });
+            context.getContextData().put(FutureWrapper.class.getName() + "_" + id, facade);
+            getExecutor(context).execute(new AsyncTask(context, facade));
             return facade;
         }
         throw new FaultToleranceDefinitionException(
@@ -103,7 +93,7 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
     private static ErrorHandler<Exception, Future<?>> getErrorHandler(final Map<String, Object> contextData) {
         return ErrorHandler.class.cast(
                 contextData.get(BaseAsynchronousInterceptor.BaseFuture.class.getName() + ".errorHandler_" +
-                contextData.get(IdGeneratorInterceptor.class.getName())));
+                        contextData.get(IdGeneratorInterceptor.class.getName())));
     }
 
     protected FutureWrapper<Object> newFuture(final InvocationContext context,
@@ -116,7 +106,7 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
     }
 
     @FunctionalInterface
-    public interface ErrorHandler<A, B>  {
+    public interface ErrorHandler<A, B> {
         B apply(A a) throws Exception;
     }
 
@@ -134,6 +124,7 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
     }
 
     public static class FutureWrapper<T> implements Future<T>, BaseFuture {
+        private FutureWrapper<?> parent;
         private final AtomicReference<Future<T>> delegate = new AtomicReference<>();
         private final AtomicReference<Consumer<Future<T>>> cancelled = new AtomicReference<>();
         private final CountDownLatch latch = new CountDownLatch(1);
@@ -141,6 +132,17 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
 
         public FutureWrapper(final Map<String, Object> data) {
             this.data = data;
+        }
+
+        public FutureWrapper<?> getParent() {
+            return parent;
+        }
+
+        public void setParent(final FutureWrapper<?> parent) {
+            if (this.parent != null) {
+                this.parent.setParent(parent);
+            }
+            this.parent = parent;
         }
 
         public void setDelegate(final Future<T> delegate) {
@@ -167,7 +169,7 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
         @Override
         public boolean isDone() {
             final Future<T> future = delegate.get();
-            return future != null && future.isDone();
+            return future != null && future.isDone() && getErrorHandler(data) == null;
         }
 
         @Override
@@ -177,33 +179,33 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
             try {
                 return future.get();
             } catch (final ExecutionException ee) {
-                final Future<T> newFuture = onException(ee);
-                delegate.set(newFuture);
-                return newFuture.get();
+                delegate.set(onException(ee));
+                return delegate.get().get();
             }
         }
 
         @Override
         public T get(final long timeout, final TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-            final long latchWaitStart = System.nanoTime();
+            final long end = System.nanoTime() + unit.toNanos(timeout);
             final boolean latchWait = latch.await(timeout, unit);
-            final long latchWaitDuration = System.nanoTime() - latchWaitStart;
-            if (!latchWait) {
+            final long readyNs = System.nanoTime();
+            if (!latchWait || readyNs > end) {
                 throw new TimeoutException();
             }
             try {
-                return delegate.get().get(unit.toNanos(timeout) - latchWaitDuration, NANOSECONDS);
+                return delegate.get().get(Math.max(0, end - readyNs), NANOSECONDS);
             } catch (final ExecutionException ee) {
                 delegate.set(onException(ee));
-                final long duration = unit.toNanos(timeout) - (System.nanoTime() - latchWaitDuration);
-                if (duration < 0) {
+                final long now = System.nanoTime();
+                if (now > end) {
                     throw new TimeoutException();
                 }
-                return delegate.get().get(duration, NANOSECONDS);
+                return delegate.get().get(Math.max(0, end - now), NANOSECONDS);
             }
         }
 
-        protected Future<T> onException(final Throwable cause) throws ExecutionException {
+        // todo: revise
+        protected Future<T> onException(final Throwable cause) {
             if (!Exception.class.isInstance(cause)) {
                 if (Error.class.isInstance(cause)) {
                     throw Error.class.cast(cause);
@@ -216,25 +218,68 @@ public abstract class BaseAsynchronousInterceptor implements Serializable {
                 try {
                     return (Future<T>) handler.apply(ex);
                 } catch (final Exception e) {
-                    if (ExecutionException.class.isInstance(e)) {
-                        throw ExecutionException.class.cast(e);
-                    }
                     if (RuntimeException.class.isInstance(e)) {
                         throw RuntimeException.class.cast(e);
                     }
                     if (Error.class.isInstance(e)) {
                         throw Error.class.cast(e);
                     }
+                    if (ExecutionException.class.isInstance(cause) && cause.getCause() != cause) {
+                        return failAsFuture(cause);
+                    }
                     throw new IllegalStateException(e);
                 }
             }
-            if (ExecutionException.class.isInstance(cause)) {
-                throw ExecutionException.class.cast(cause);
+            if (ExecutionException.class.isInstance(cause) && cause.getCause() != cause) {
+                final Throwable throwable = ExecutionException.class.cast(cause).getCause();
+                return onException(throwable);
             }
             if (RuntimeException.class.isInstance(cause)) {
                 throw RuntimeException.class.cast(cause);
             }
             throw new IllegalStateException(cause); // unreachable - just for compiler
+        }
+
+        private Future<T> failAsFuture(final Throwable cause) {
+            final Throwable throwable = ExecutionException.class.cast(cause).getCause();
+            final ExtendedCompletableFuture<T> future = new ExtendedCompletableFuture<>();
+            future.completeExceptionally(throwable);
+            return future;
+        }
+
+        public void failed(final Exception exception) {
+            final ExtendedCompletableFuture<T> delegate = new ExtendedCompletableFuture<>();
+            delegate.completeExceptionally(exception);
+            setDelegate(delegate);
+            latch.countDown();
+        }
+    }
+
+    public static class AsyncTask implements Runnable {
+        private final InvocationContext context;
+        private final FutureWrapper<Object> facade;
+
+        public AsyncTask(final InvocationContext context, final FutureWrapper<Object> facade) {
+            this.context = context;
+            this.facade = facade;
+        }
+
+        public FutureWrapper<Object> getFacade() {
+            return facade;
+        }
+
+        @Override
+        public void run() {
+            final Object proceed;
+            try {
+                facade.before();
+                proceed = context.proceed();
+                facade.setDelegate(Future.class.cast(proceed));
+            } catch (final Exception e) {
+                final CompletableFuture<Object> failingFuture = new CompletableFuture<>();
+                failingFuture.completeExceptionally(e);
+                facade.setDelegate(failingFuture);
+            }
         }
     }
 }

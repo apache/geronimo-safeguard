@@ -21,7 +21,6 @@ package org.apache.safeguard.impl.bulkhead;
 import static java.util.Optional.ofNullable;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
-import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,6 +28,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.annotation.PreDestroy;
@@ -62,6 +62,32 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
     public Object bulkhead(final InvocationContext context) throws Exception {
         final Map<Key, Model> models = cache.getModels();
         final Key key = new Key(context, cache.getUnwrappedCache().getUnwrappedCache());
+        final Model model = getModel(context, models, key);
+        if (model.disabled) {
+            return context.proceed();
+        }
+        final Map<String, Object> data = context.getContextData();
+        final String id = String.valueOf(data.get(IdGeneratorInterceptor.class.getName()));
+        if (model.useThreads) {
+            data.put(BulkheadInterceptor.class.getName() + ".self_" + id, this);
+            data.put(BulkheadInterceptor.class.getName() + ".model_" + id, model);
+            data.put(BulkheadInterceptor.class.getName() + "_" + id, model.pool);
+            data.put(Asynchronous.class.getName() + ".skip_" + id, Boolean.TRUE);
+            return around(context, id);
+        }
+
+        final BulkheadHandler handler = new ReleaseHandler(model);
+        data.put(BulkheadHandler.class.getName() + "_" + id, handler);
+        handler.acquire();
+        try {
+            return context.proceed();
+        } finally {
+            handler.release();
+            data.remove(BulkheadHandler.class.getName() + "_" + id);
+        }
+    }
+
+    private Model getModel(final InvocationContext context, final Map<Key, Model> models, final Key key) {
         Model model = models.get(key);
         if (model == null) {
             model = cache.create(context);
@@ -72,32 +98,7 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
                 cache.postCreate(model, context);
             }
         }
-        if (model.disabled) {
-            return context.proceed();
-        }
-        if (model.useThreads) {
-            final Map<String, Object> data = context.getContextData();
-            final Object id = data.get(IdGeneratorInterceptor.class.getName());
-            data.put(BulkheadInterceptor.class.getName() + ".model_" + id, model);
-            data.put(BulkheadInterceptor.class.getName() + "_" + id, model.pool);
-            data.put(Asynchronous.class.getName() + ".skip_" + id, Boolean.TRUE);
-            return around(context);
-        } else {
-            if (!model.semaphore.tryAcquire()) {
-                model.callsRejected.inc();
-                throw new BulkheadException("No more permission available");
-            }
-            model.callsAccepted.inc();
-            model.concurrentCalls.incrementAndGet();
-            final long start = System.nanoTime();
-            try {
-                return context.proceed();
-            } finally {
-                model.executionDuration.update(System.nanoTime() - start);
-                model.semaphore.release();
-                model.concurrentCalls.decrementAndGet();
-            }
-        }
+        return model;
     }
 
     private Model getModel(final InvocationContext context) {
@@ -117,7 +118,7 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
     }
 
     @Override
-    protected Executor getExecutor(final InvocationContext context) {
+    public Executor getExecutor(final InvocationContext context) {
         return Executor.class.cast(context.getContextData()
                   .get(BulkheadInterceptor.class.getName() + "_" + context.getContextData().get(IdGeneratorInterceptor.class.getName())));
     }
@@ -212,20 +213,28 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
                     }
                 }, (r, executor) -> {
                     callsRejected.inc();
-                    throw new BulkheadException("Can't accept task " + r);
+
+                    final BulkheadException bulkheadException = new BulkheadException("Can't accept task " + r);
+                    if (BulkheadAsyncTask.class.isInstance(r)) { // normally yes
+                        final BulkheadAsyncTask bulkheadAsyncTask = BulkheadAsyncTask.class.cast(r);
+                        if (AsyncTask.class.isInstance(bulkheadAsyncTask.command)) { // todo: handle a way to always unwrap
+                            final AsyncTask asyncTask = AsyncTask.class.cast(bulkheadAsyncTask.command);
+                            final FutureWrapper<Object> facade = asyncTask.getFacade();
+                            facade.failed(bulkheadException);
+                            if (facade.getParent() != null) {
+                                facade.getParent().failed(bulkheadException);
+                            }
+                            return; // handled
+                        }
+                    }
+
+                    // else just throw it (sync case)
+                    throw bulkheadException;
                 }) {
                     @Override
                     public void execute(final Runnable command) {
                         final long submitted = System.nanoTime();
-                        super.execute(() -> {
-                            final long start = System.nanoTime();
-                            waitingDuration.update(start - submitted);
-                            try {
-                                command.run();
-                            } finally {
-                                executionDuration.update(System.nanoTime() - start);
-                            }
-                        });
+                        super.execute(new BulkheadAsyncTask(waitingDuration, command, submitted));
                         callsAccepted.inc();
                     }
                 };
@@ -234,6 +243,30 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
                 this.workQueue = null;
                 this.pool = null;
                 this.semaphore = new Semaphore(value);
+            }
+        }
+    }
+
+    private static class BulkheadAsyncTask implements Runnable {
+        private final FaultToleranceMetrics.Histogram histogram;
+        private final Runnable command;
+        private final long submitted;
+
+        private BulkheadAsyncTask(final FaultToleranceMetrics.Histogram histogram,
+                                  final Runnable command, final long submitted) {
+            this.histogram = histogram;
+            this.command = command;
+            this.submitted = submitted;
+        }
+
+        @Override
+        public void run() {
+            final long start = System.nanoTime();
+            histogram.update(start - submitted);
+            try {
+                command.run();
+            } finally {
+                histogram.update(System.nanoTime() - start);
             }
         }
     }
@@ -304,6 +337,38 @@ public class BulkheadInterceptor extends BaseAsynchronousInterceptor {
                 metrics.gauge(metricsNameBase + "waitingQueue.population",
                         "Number of executions currently waiting in the queue", "none", () -> (long) model.workQueue.size());
             }
+        }
+    }
+
+    private static class ReleaseHandler implements BulkheadHandler {
+        private final Model model;
+        private final AtomicBoolean released = new AtomicBoolean();
+        private long start;
+
+        public ReleaseHandler(final Model model) {
+            this.model = model;
+        }
+
+        @Override
+        public void acquire() {
+            if (!model.semaphore.tryAcquire()) {
+                model.callsRejected.inc();
+                throw new BulkheadException("No more permission available");
+            }
+            model.callsAccepted.inc();
+            model.concurrentCalls.incrementAndGet();
+            start = System.nanoTime();
+            released.set(false);
+        }
+
+        @Override
+        public void release() {
+            if (!released.compareAndSet(false, true)) {
+                return;
+            }
+            model.executionDuration.update(System.nanoTime() - start);
+            model.semaphore.release();
+            model.concurrentCalls.decrementAndGet();
         }
     }
 }

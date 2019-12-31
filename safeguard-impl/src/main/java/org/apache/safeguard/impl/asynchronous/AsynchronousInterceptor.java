@@ -44,7 +44,7 @@ public class AsynchronousInterceptor extends BaseAsynchronousInterceptor {
     private Cache cache;
 
     @Override
-    protected Executor getExecutor(final InvocationContext context) {
+    public Executor getExecutor(final InvocationContext context) {
         return cache.getExecutor();
     }
 
@@ -60,12 +60,12 @@ public class AsynchronousInterceptor extends BaseAsynchronousInterceptor {
         if (!enabled) {
             return context.proceed();
         }
-        final String key = Asynchronous.class.getName() + ".skip_" +
-                context.getContextData().get(IdGeneratorInterceptor.class.getName());
+        final String id = String.valueOf(context.getContextData().get(IdGeneratorInterceptor.class.getName()));
+        final String key = Asynchronous.class.getName() + ".skip_" + id;
         if (context.getContextData().putIfAbsent(key, Boolean.TRUE) != null) { // bulkhead or so handling threading
             return context.proceed();
         }
-        return around(context);
+        return around(context, id);
     }
 
     @ApplicationScoped

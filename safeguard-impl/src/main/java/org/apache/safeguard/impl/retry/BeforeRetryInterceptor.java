@@ -31,6 +31,11 @@ import org.eclipse.microprofile.faulttolerance.Retry;
 @Priority(Interceptor.Priority.PLATFORM_AFTER)
 public class BeforeRetryInterceptor extends BaseRetryInterceptor {
     @Override
+    protected boolean suspendBulkhead() {
+        return false;
+    }
+
+    @Override
     protected void executeFinalCounterAction(final Map<String, Object> contextData,
                                              final FaultToleranceMetrics.Counter counter) {
         counter.inc();
