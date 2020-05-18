@@ -20,7 +20,7 @@ package org.apache.safeguard.impl.tck;
 
 import javax.inject.Inject;
 
-import org.apache.safeguard.impl.tck.retry.ZeoJitterBean;
+import org.apache.safeguard.impl.tck.retry.ZeroJitterBean;
 import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.arquillian.testng.Arquillian;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
 
 public class RetryZeroJitterTest extends Arquillian {
     @Inject
-    private ZeoJitterBean bean;
+    private ZeroJitterBean bean;
 
     @Deployment
     public static WebArchive archive() {
@@ -39,7 +39,7 @@ public class RetryZeroJitterTest extends Arquillian {
                 .create(WebArchive.class, "RetryZeroJitterTest.war")
                 .addAsLibrary(ShrinkWrap
                         .create(JavaArchive.class, "RetryZeroJitterTest.jar")
-                        .addClass(ZeoJitterBean.class)
+                        .addClass(ZeroJitterBean.class)
                         .addAsManifestResource(EmptyAsset.INSTANCE, "beans.xml")
                         .as(JavaArchive.class));
     }

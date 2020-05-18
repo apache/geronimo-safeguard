@@ -105,7 +105,7 @@ public class SafeguardExtension implements Extension {
         customizePriority(interceptor);
     }
 
-    void customizeCircuitbreakerPriority(@Observes final ProcessAnnotatedType<CircuitBreakerInterceptor> interceptor) {
+    void customizeCircuitBreakerPriority(@Observes final ProcessAnnotatedType<CircuitBreakerInterceptor> interceptor) {
         customizePriority(interceptor);
     }
 
