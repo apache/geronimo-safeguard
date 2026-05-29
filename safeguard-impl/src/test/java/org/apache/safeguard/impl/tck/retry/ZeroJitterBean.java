@@ -23,7 +23,7 @@ import javax.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.faulttolerance.Retry;
 
 @ApplicationScoped
-public class ZeoJitterBean {
+public class ZeroJitterBean {
     private int remaining = 0;
 
     @Retry(jitter = 0, maxRetries = 1)
